@@ -1,26 +1,24 @@
-import { getReports } from "../../lib/reports";
+"use client";
 
-type Report = {
-  id: number;
-  title: string;
-  createdAt: string;
-};
+import { reports } from "@/lib/mock-reports";
+import { ReportCard } from "./_components/ReportCard";
 
-export default async function ReportsPage() {
-  const reports = await getReports();
-
-  console.log("SERVER FETCHED");
+export default function ReportsPage() {
+  console.log("CLIENT FETCHED");
 
   return (
-    <div className="p-10 space-y-4">
+    <main className="mx-auto max-w-4xl space-y-6 p-6">
       <h1 className="text-2xl font-bold">Reports</h1>
-
-      {reports.map((report) => (
-        <div key={report.id} className="border p-4 rounded-lg">
-          <p className="font-semibold">{report.title}</p>
-          <p className="text-sm text-gray-500">{report.createdAt}</p>
-        </div>
-      ))}
-    </div>
+      <p>
+        <p>{new Date().toLocaleTimeString()}</p>
+      </p>
+      <ul className="space-y-4">
+        {reports.map((report) => (
+          <li key={report.id}>
+            <ReportCard report={report} />
+          </li>
+        ))}
+      </ul>
+    </main>
   );
 }
