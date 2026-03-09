@@ -7,28 +7,36 @@ const MOCK_DELAY_MS = 1500;
 /**
  * SSR용 보고서 목록 조회.
  * revalidateTag("reports")로 캐시 무효화 가능.
+ * 프로덕션에서 env 미설정·Supabase 오류 시 빈 배열 반환(화면 크래시 방지).
  */
 export async function getReports(): Promise<Report[]> {
   const getCached = unstable_cache(
     async (): Promise<Report[]> => {
-      await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY_MS));
-      const supabase = createSupabaseServerClient();
-      const { data, error } = await supabase.from("reports").select("*");
-      if (error) throw error;
+      try {
+        await new Promise((resolve) => setTimeout(resolve, MOCK_DELAY_MS));
+        const supabase = createSupabaseServerClient();
+        const { data, error } = await supabase.from("reports").select("*");
+        if (error) throw error;
 
-      // 최소 예제: posts 테이블의 컬럼을 Report에 맞춰 매핑
-      // - id: number
-      // - title: string
-      // - createdAt: string(YYYY-MM-DD)
-      return (data ?? []).map((row: Record<string, unknown>) => ({
-        id: Number(row.id),
-        title: String(row.title ?? ""),
-        createdAt: String(
-          row.createdAt ??
-            row.created_at ??
-            new Date().toISOString().slice(0, 10),
-        ).slice(0, 10),
-      }));
+        // 최소 예제: posts 테이블의 컬럼을 Report에 맞춰 매핑
+        // - id: number
+        // - title: string
+        // - createdAt: string(YYYY-MM-DD)
+        return (data ?? []).map((row: Record<string, unknown>) => ({
+          id: Number(row.id),
+          title: String(row.title ?? ""),
+          createdAt: String(
+            row.createdAt ??
+              row.created_at ??
+              new Date().toISOString().slice(0, 10),
+          ).slice(0, 10),
+        }));
+      } catch (e) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("[getReports]", e);
+        }
+        return [];
+      }
     },
     ["reports-list"],
     { tags: ["reports"] },
