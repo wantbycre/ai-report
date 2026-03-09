@@ -1,3 +1,5 @@
-[build];
-command = "npm run build"[functions];
-node_bundler = "esbuild";
+[build]
+command = "npm run build"
+
+[functions]
+node_bundler = "esbuild"
