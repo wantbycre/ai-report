@@ -1,6 +1,9 @@
 import { getReports } from "@/lib/reports";
 import { ReportsView } from "./_components/ReportsView";
 
+/** 빌드 시 정적 생성하지 않음. Netlify 빌드에서 Supabase 미연결로 export 실패 방지. */
+export const dynamic = "force-dynamic";
+
 /**
  * SSR: GET 시 mock + setTimeout으로 서버 지연 표현 → loading.tsx 노출.
  * POST는 Server Action으로 처리하고, 반환된 목록으로 클라이언트 리스트만 갱신(로딩 없음).
