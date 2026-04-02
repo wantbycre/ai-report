@@ -1,0 +1,303 @@
+# ❌ 나쁜 예 - 장황한 설명
+# React Query를 사용합니다. 서버 상태 관리에 적합하고 캐싱이 
+# 자동으로 되기 때문에 useEffect + fetch 패턴은 사용하지 마세요.
+
+# ✅ 좋은 예 - 단호한 선언
+# SERVER STATE: React Query only. No useEffect+fetch.
+
+## [1] STACK        → 사용 기술 선언 (버전 포함)
+## [2] CONVENTIONS  → 파일명/폴더/컴포넌트 규칙
+## [3] PATTERNS     → 코드 패턴 강제 (금지 포함)
+## [4] CONTEXT      → doc/*.md 참조 방식 안내
+
+
+# ============================================================
+# CURSORRULES — Next.js Refactoring Project
+# ============================================================
+# Stack: Next.js (CSR only) + TypeScript + Tailwind + shadcn/ui
+#        + React Query + React Hook Form
+# Updated: 2026
+# ============================================================
+
+
+# ------------------------------------------------------------
+# [1] STACK
+# ------------------------------------------------------------
+
+## Framework
+- Next.js (App Router, CSR only)
+- NO SSR, NO SSG, NO ISR. Every page uses "use client" directive.
+- Routing: app/ directory 기준. 페이지 파일은 app/[feature]/page.tsx
+
+## Language
+- TypeScript strict mode only. No .js or .jsx files.
+- Type assertion (as) 최소화. unknown → 타입가드 사용.
+
+## Styling
+- Tailwind CSS utility class only. No inline style, no CSS modules.
+- shadcn/ui 컴포넌트 우선 사용. 커스텀 UI 컴포넌트 신규 생성 금지.
+- 색상은 :root CSS 변수(--primary 등) 만 수정. hardcoded hex 금지.
+
+## Server State
+- React Query (TanStack Query v5) only.
+- No useEffect + fetch 패턴. No axios 직접 호출 in component.
+
+## Form
+- React Hook Form + zod validation.
+- Controlled input (useState) 단독 사용 금지.
+
+
+# ------------------------------------------------------------
+# [2] FOLDER STRUCTURE
+# ------------------------------------------------------------
+
+## 기준: app/ 라우트 중심
+
+src/
+├── app/
+│   ├── (admin)/
+│   │   └── auth/
+│   │       ├── login/page.tsx
+│   │       └── signup/page.tsx
+│   │   └── [feature]/
+│   │       ├── page.tsx          # 진입점. 로직 없음. layout + Suspense만.
+│   │       ├── _components/      # 해당 feature 전용 컴포넌트
+│   │       └── _hooks/           # 해당 feature 전용 훅
+│   └── layout.tsx
+├── components/
+│   └── ui/                       # shadcn/ui 자동 생성 파일 (수정 금지)
+├── hooks/                        # 전역 공용 훅
+├── lib/
+│   ├── api.ts                    # axios instance
+│   ├── query-client.ts
+│   └── utils.ts                  # shadcn/ui 유틸 (cn 등)
+└── types/
+    └── api.ts                    # 공통 API 타입
+
+
+# ------------------------------------------------------------
+# [3] PATTERNS — 반드시 따를 코드 패턴
+# ------------------------------------------------------------
+
+## API 함수
+# 파일명: use[Feature][Action].ts (예: useSignUp.ts, useOrderList.ts)
+# API 함수는 훅 파일 상단에 함께 위치시킨다.
+
+### API 응답 공통 타입
+```typescript
+// src/types/api.ts
+export interface ApiResponse<T> {
+  success: boolean;
+  data: T;
+  message: string;
+}
+```
+
+### API 함수 패턴
+```typescript
+// ✅ 올바른 패턴
+const postAuthSignup = (data: SignupPayload) =>
+  api.post<ApiResponse<AuthItem>>('/api/oms/auth/signup', data);
+```
+
+### useMutation 패턴
+```typescript
+// ✅ 올바른 패턴
+// onSuccess는 호출하는 컴포넌트(화면)에서 처리한다. 훅 내부 작성 금지.
+export const useSignUp = () => {
+  return useMutation({
+    mutationFn: postAuthSignup,
+  });
+};
+```
+
+### useQuery 패턴
+```typescript
+// ✅ 올바른 패턴
+export const useOrderList = (params: OrderListParams) => {
+  return useQuery({
+    queryKey: ['orderList', params],
+    queryFn: () => getOrderList(params),
+    select: (res) => res.data.data,  // ApiResponse 언래핑
+  });
+};
+```
+
+---
+
+## TABLE PATTERN
+# 참조: @doc/_templates/table-page.md
+
+- 페이징/정렬 상태: useTableState(data) hook 사용. 신규 상태 관리 금지.
+- 테이블 UI: shadcn/ui <Table> 컴포넌트 기반으로 직접 구성. data-table 사용 금지.
+- 페이지네이션: shadcn/ui <Pagination> 컴포넌트 사용.
+- 정렬: 클라이언트사이드. useTableState의 sorted() 사용. API sort 파라미터 금지.
+- auto scroll: useTableState의 tableRef를 테이블 wrapper div에 연결.
+- 행 클릭/체크박스 등 인터랙션은 각 [Feature]Table 컴포넌트에서 독립 구현.
+
+```typescript
+// ✅ 테이블 컴포넌트 기본 구조
+export function OrderTable({ data }: OrderTableProps) {
+  const { sorted, page, setPage, totalPages, tableRef, handleSort, sortKey, sortOrder } =
+    useTableState(data);
+
+  return (
+    <div ref={tableRef}>
+      <Table>
+        <TableHeader>...</TableHeader>
+        <TableBody>
+          {sorted.map((row) => (
+            <TableRow key={row.id}>...</TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+    </div>
+  );
+}
+```
+
+---
+
+## LOADING PATTERN
+# Spinner 컴포넌트 사용 확정. Skeleton은 사용하지 않는다.
+
+```typescript
+// ✅ 전체 화면 로딩
+<div className="flex items-center justify-center h-screen">
+  <Spinner />
+</div>
+
+// ✅ 부분 영역 로딩 (테이블/컨텐츠 영역)
+<div className="flex items-center justify-center py-10">
+  <Spinner />
+</div>
+```
+
+---
+
+## ALERT PATTERN
+# AlertDialog 컴포넌트 사용 확정. 브라우저 기본 alert/confirm 사용 금지.
+
+```typescript
+// ✅ 확인/취소가 필요한 액션 (삭제 등)
+<AlertDialog>
+  <AlertDialogTrigger asChild>
+    <Button variant="destructive">삭제</Button>
+  </AlertDialogTrigger>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>정말 삭제하시겠습니까?</AlertDialogTitle>
+      <AlertDialogDescription>이 작업은 되돌릴 수 없습니다.</AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel>취소</AlertDialogCancel>
+      <AlertDialogAction onClick={handleDelete}>삭제</AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+---
+
+## 컴포넌트
+
+### page.tsx — 진입점 규칙
+```typescript
+// ✅ page.tsx는 레이아웃 + Suspense 역할만
+"use client";
+export default function OrderPage() {
+  return (
+    <div className="p-6">
+      <Suspense fallback={<div className="flex items-center justify-center py-10"><Spinner /></div>}>
+        <OrderList />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### 컴포넌트 Props 타입
+```typescript
+// ✅ interface 사용. type alias 금지 (props 한정)
+interface OrderTableProps {
+  data: Order[];
+  onSelect: (id: string) => void;
+}
+```
+
+
+# ------------------------------------------------------------
+# [4] NAMING CONVENTIONS
+# ------------------------------------------------------------
+
+## 파일명
+- 컴포넌트:    PascalCase.tsx               (OrderTable.tsx)
+- 훅:          camelCase, use 접두사        (useOrderList.ts)
+- API 함수:    camelCase, HTTP메서드 접두사  (getOrderList, postOrder, putOrder, deleteOrder)
+- 타입 파일:   camelCase.ts                 (orderTypes.ts)
+
+## 변수/함수명
+- 이벤트 핸들러: handle 접두사 (handleSubmit, handleRowClick)
+- Boolean 변수: is/has/can 접두사 (isLoading, hasError, canSubmit)
+- 상수:        UPPER_SNAKE_CASE
+
+## queryKey 규칙
+- ['리소스명', 파라미터객체] 형태 통일
+- 예: ['orderList', { page, size, status }]
+- 예: ['orderDetail', { id }]
+
+
+# ------------------------------------------------------------
+# [5] FORBIDDEN PATTERNS — 절대 생성 금지
+# ------------------------------------------------------------
+
+- ❌ useEffect + fetch/axios 조합
+- ❌ any 타입 사용
+- ❌ React.FC<Props> 타입 선언 (일반 함수 컴포넌트 사용)
+- ❌ default export 훅 (named export만)
+- ❌ index.ts barrel export (순환참조 방지)
+- ❌ CSS 모듈 (.module.css)
+- ❌ styled-components / emotion
+- ❌ 하드코딩된 색상값 (text-[#ff0000] 등)
+- ❌ console.log 커밋 (console.error는 허용)
+- ❌ // @ts-ignore, // @ts-nocheck
+- ❌ 브라우저 기본 alert(), confirm() 사용 → AlertDialog 사용
+- ❌ Skeleton 로딩 UI → Spinner로 통일
+- ❌ data-table 컴포넌트 → shadcn/ui <Table> 직접 구성
+- ❌ useMutation onSuccess 훅 내부 작성 → 컴포넌트에서 처리
+
+
+# ------------------------------------------------------------
+# [6] TODO 처리 규칙
+# ------------------------------------------------------------
+
+## 확정된 항목 (TODO 불필요)
+- Loading UI → Spinner ✅
+- Alert UI   → AlertDialog ✅
+
+## 미확정 항목은 TODO 태그로 표시
+- TODO: [AUTH]  — 인증 처리 미확정
+- TODO: [API]   — API 엔드포인트 미확정
+
+
+# ------------------------------------------------------------
+# [7] CONTEXT 참조 규칙
+# ------------------------------------------------------------
+
+## 규칙 파일 위치
+- Cursor 주입은 저장소 루트 `.cursorrules`를 `@.cursorrules`로 사용한다.
+- `doc/.cursorrules`는 동일 내용 사본이다. 컨벤션을 바꿀 때는 두 파일을 함께 맞춘다.
+
+## Cursor에서 @로 주입할 문서 목록
+- 전체 컨벤션:     @.cursorrules
+- API 공통 스펙:   @doc/spec/api-contract.md
+- 기능 스펙:       @doc/spec/[feature].md
+- CRUD 템플릿:     @doc/_templates/crud-page.md
+- 훅 템플릿:       @doc/_templates/api-hook.md
+- 테이블 템플릿:   @doc/_templates/table-page.md
+
+## 새 기능 개발 시 Cursor 프롬프트 순서
+1. @doc/spec/[feature].md 로 스펙 주입
+2. @.cursorrules 로 규칙 주입
+3. 작업 지시 (TASK 형식으로)
