@@ -1,24 +1,22 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { Spinner } from "@/components/ui/spinner";
+import type { TickerInfo } from "@/components/chart/GoldChart";
 
-const GoldChart = dynamic(() => import("@/components/chart/ColdCart"), {
+const GoldChart = dynamic(() => import("@/components/chart/GoldChart"), {
   ssr: false,
   loading: () => (
-    <div
-      style={{
-        height: "500px",
-        background: "#f8f8f8",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      차트 로딩 중...
+    <div className="flex h-[500px] items-center justify-center rounded-lg bg-zinc-50 dark:bg-zinc-900/40">
+      <Spinner />
     </div>
   ),
 });
 
-export default function ChartDemoClient() {
-  return <GoldChart />;
+interface Props {
+  onTick?: (ticker: TickerInfo) => void;
+}
+
+export default function ChartDemoClient({ onTick }: Props) {
+  return <GoldChart onTick={onTick} />;
 }

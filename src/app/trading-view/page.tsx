@@ -1,28 +1,64 @@
+"use client";
+
+import { useCallback, useState } from "react";
 import ChartDemoClient from "./ChartDemoClient";
+import type { TickerInfo } from "@/components/chart/GoldChart";
 
-export default function Page() {
+function fmt(n: number) {
+  return n.toLocaleString("ko-KR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+export default function TradingViewPilotPage() {
+  const [ticker, setTicker] = useState<TickerInfo | null>(null);
+
+  const handleTick = useCallback((info: TickerInfo) => {
+    setTicker(info);
+  }, []);
+
+  const isUp = ticker ? ticker.changeAmount >= 0 : true;
+  const colorClass = isUp ? "text-red-500" : "text-blue-500";
+
   return (
-    <main style={{ padding: "40px", maxWidth: "1200px", margin: "0 auto" }}>
-      <header style={{ marginBottom: "20px" }}>
-        <h1 style={{ fontSize: "24px", fontWeight: "bold" }}>
-          한국 금거래소 트레이딩 시스템
-        </h1>
-        <p style={{ color: "#666" }}>Next.js SSR 환경 기반 실시간 차트 시연</p>
-      </header>
-
-      <section
-        style={{
-          border: "1px solid #eaeaea",
-          borderRadius: "12px",
-          padding: "20px",
-          backgroundColor: "#fff",
-        }}
-      >
-        <ChartDemoClient />
+    <main className="">
+      <section className={`text-lg font-bold font-tahoma mb-3 ${colorClass}`}>
+        <div className="mb-0 leading-5">{ticker ? fmt(ticker.price) : "—"}</div>
+        <div className="text-[10px] flex items-center gap-2 leading-3">
+          <span>
+            {ticker
+              ? `${isUp ? "+" : ""}${ticker.changePercent.toFixed(2)}%`
+              : "—"}
+          </span>
+          <span>
+            {ticker
+              ? `${isUp ? "▲" : "▼"} ${fmt(Math.abs(ticker.changeAmount))}`
+              : "—"}
+          </span>
+        </div>
+      </section>
+      <section className="rounded-xl bg-background shadow-sm">
+        <ChartDemoClient onTick={handleTick} />
       </section>
 
-      <footer style={{ marginTop: "20px", fontSize: "13px", color: "#999" }}>
-        © 2026 한국 금거래소 시뮬레이션 - TradingView Lightweight Charts 적용
+      <footer className="text-xs text-zinc-500 dark:text-zinc-500 mt-5 mb-10">
+        © 2026 한국 금거래소 시뮬레이션 — TradingView Lightweight Charts
+        <br />
+        <br />
+        <div className="text-xs">
+          # mock 20년치의 랜덤 데이터 사용,
+          <br />- 실시간 표현을 위해 setInterval 사용 <br />
+          - lightweight-charts 의<br />
+          기본옵션만 사용 유료시 더 다양한 옵션 사용 가능 (이평선, 이동평균계열,
+          오실레이터, UI, 볼륨, 변동성, 드로잉툴, ) <br />
+          <br />
+          # 현재 구현 목록 - 2000 ~ 2026 년 랜덤 데이터 사용 <br />
+          - 1분, 1시간, 일, 주, 월, 연 캔들 표시 가능 <br />
+          - 캔들 표시 시간대 변경 가능 <br />
+          - 캔들 표시 시간대 변경 시 캔들 데이터 갱신
+          <br />- 캔들 표시 시간대 변경 시 캔들 데이터 갱신
+        </div>
       </footer>
     </main>
   );
