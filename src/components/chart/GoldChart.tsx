@@ -12,6 +12,7 @@ import {
   type UTCTimestamp,
   type CandlestickData,
   type LineData,
+  type Time,
 } from "lightweight-charts";
 import { Button } from "@/components/ui/button";
 import { goldChartMockCandles } from "./goldChartMockData";
@@ -152,6 +153,18 @@ function buildData(tf: Timeframe): CandlestickData[] {
 
 const toLineData = (data: CandlestickData[]): LineData[] =>
   data.map((c) => ({ time: c.time, value: c.close }));
+
+/** 전체 데이터 중 최근 2년치만 화면에 노출. 인트라데이는 fitContent 사용. */
+function applyVisibleRange(chart: IChartApi, tf: Timeframe, data: CandlestickData[]) {
+  if (tf === "1m" || tf === "1h" || data.length === 0) {
+    chart.timeScale().fitContent();
+    return;
+  }
+  const lastStr = data[data.length - 1].time as string; // "YYYY-MM-DD"
+  const [y, mo, d] = lastStr.split("-").map(Number);
+  const fromStr = `${y - 2}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  chart.timeScale().setVisibleRange({ from: fromStr as Time, to: lastStr as Time });
+}
 
 // ─── 라이브 캔들 상태 ─────────────────────────────────────────────────────────
 
@@ -339,7 +352,7 @@ export default function GoldChart({ onTick }: GoldChartProps) {
       seriesRef.current = s;
     }
 
-    chart.timeScale().fitContent();
+    applyVisibleRange(chart, timeframeRef.current, data);
 
     // 라이브 기준 갱신
     const prev = liveRef.current;
@@ -375,7 +388,7 @@ export default function GoldChart({ onTick }: GoldChartProps) {
     } else {
       series.setData(toLineData(data));
     }
-    chart.timeScale().fitContent();
+    applyVisibleRange(chart, timeframe, data);
 
     const prev = liveRef.current;
     const next = lastAsLive(data);
