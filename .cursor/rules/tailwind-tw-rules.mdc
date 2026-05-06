@@ -1,0 +1,26 @@
+---
+description: Tailwind v4 유틸은 tw: prefix로만 사용
+alwaysApply: false
+---
+
+# Tailwind 유틸 규칙
+
+이 프로젝트는 기존 `src/shared/styles/global.css.js`의 reset/전역 유틸을 건드리지 않고, Tailwind는 "utilities만" 사용합니다.
+
+## 1) Tailwind 유틸 네이밍
+
+- 신규 Tailwind 유틸은 반드시 `tw:` prefix 규칙을 사용합니다.
+  - `flex` -> `tw:flex`
+  - `items-center` -> `tw:items-center`
+  - `justify-center` -> `tw:justify-center`
+  - `ms-4` -> `tw:ms-4`
+  - `ps-4` -> `tw:ps-4`
+- prefix는 "항상 가장 앞"에 와야 합니다.
+  - `md:w-md` -> `tw:md:w-md`
+  - `md:flex` -> `tw:md:flex`
+
+## 2) 기존 전역 유틸 유지
+
+- 기존 코드의 `.text-center` / `.text-right`는 그대로 유지합니다.
+- Tailwind의 `tw:text-center`는 `text-align`만 담당하므로, 기존 `.text-center`(기존에 `justifyContent:center`까지 포함)와 동일한 레이아웃이 필요하면 조합해서 사용합니다.
+  - 예: `tw:flex tw:justify-center tw:text-center`

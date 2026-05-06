@@ -1,0 +1,120 @@
+---
+description: 이 프로젝트의 TanStack React Query 사용 패턴
+globs: **/queryFactories.ts,**/api/queries.ts,**/*Queries*.ts
+alwaysApply: false
+---
+
+# React Query (TanStack Query) 사용 규칙
+
+이 프로젝트에서는 아래 패턴으로 React Query를 사용한다.
+
+## 1. 쿼리 정의 위치
+
+- **페이지 단위**: 해당 페이지 폴더의 `queryFactories.ts` (예: `src/pages/supply/outbound-management/queryFactories.ts`)
+- **기능(Feature) 단위**: `api/queries.ts` (예: `src/features/supply/order-management/api/queries.ts`)
+
+## 2. queryOptions + 쿼리 키
+
+- `@tanstack/react-query`의 `queryOptions`로 쿼리 옵션 객체를 만든다.
+- 쿼리 키는 `turnIntoQueryKeyArray`(`@shared/utils`)로 구성한다.
+  - 기본: `[BASE_QUERY_KEY, 'list' | 'summary' | ...]` + **파라미터 객체**
+  - 예: `turnIntoQueryKeyArray([BASE_QUERY_KEY] as const, 'list')`, 그 다음 `turnIntoQueryKeyArray(LIST_KEYS.LIST, params)`
+- 도메인별로 `BASE_QUERY_KEY`를 고유하게 둔다 (예: `'order-management'`, `'outbound-management'`, `'order-management-history'`).
+
+## 3. queryFn과 파라미터
+
+- `queryFn`은 `(context)`를 인자로 받고, API 호출 시 **파라미터는 `context.queryKey`에서 꺼낸다**.
+- 쿼리 키 배열에서 파라미터가 들어 있는 인덱스에 맞춰 사용한다 (예: `context.queryKey[2]`, `context.queryKey[3]`).
+- 타입이 넓게 추론되면 `as ParamsType`로 단언한다.
+
+```ts
+queryKey: turnIntoQueryKeyArray(QUERY_KEYS.LIST, params),
+queryFn: (context) => getList(context.queryKey[2] as ListParams),
+```
+
+## 4. API 응답과 select
+
+- API는 `api.get<APIResponse<T>>(...)` 형태로, 응답 본문이 `{ data: T, message, success, time }` 구조다.
+- **페이지네이션 리스트**: `APIResponse<APIResponseData<T>>` → 실제 리스트/페이지 정보는 `body.data`에 있음.
+- `queryFn`에 넘어오는 `data`는 **axios 응답 전체**이므로, 본문의 `data`를 쓰려면 `data.data`(본문), 그 다음 `data.data.data`(본문의 data 필드)를 사용한다.
+- 리스트/합계 모두 **`select: (data) => data.data.data`** 로 본문의 `data` 값을 useQuery 결과로 노출한다 (프로젝트 공통 래핑 구조 기준).
+
+## 5. 타입 안전한 select 결과 (제네릭)
+
+- `useQuery`가 반환하는 `data` 타입을 select 결과 타입으로 맞추려면 `queryOptions`에 제네릭을 준다.
+- `queryOptions<TQueryFnData, TError, TData>` 에서 `TData`를 **select가 반환하는 타입**으로 두면 된다.
+- 리스트: `TData = APIResponseData<ItemType>`
+- 단일/합계: `TData = TotalItemType`
+
+```ts
+queryOptions<
+  Awaited<ReturnType<typeof getList>>,
+  Error,
+  APIResponseData<ListItem>
+>({
+  ...
+  select: (data) => data.data.data,
+})
+```
+
+## 6. 공통 옵션
+
+- `COMMON_OPTIONS`로 `staleTime`, `gcTime` 등을 묶어서 쿼리마다 `...COMMON_OPTIONS`로 펼쳐 쓴다.
+- 필요 시 개별 쿼리에서 `gcTime`, `staleTime` 등을 덮어쓴다.
+
+## 7. 페이지/컴포넌트에서 사용
+
+- `useQuery(queries.list(params))` 또는 `useQuery(queries.listTotal({ params }))` 형태로 호출한다.
+- 인자 형태는 해당 쿼리 팩토리 정의와 맞춘다 (예: `(filterParams)` vs `({ params: filterParams })`).
+- 검색/필터 변경 시 같은 쿼리 키로 재요청되므로, `refetch` 또는 파라미터만 바꿔서 자동 재요청되게 한다.
+- 팝업/이벤트로 캐시 무효화가 필요하면 동일 스코프에서 `refetch()`를 호출한다 (예: `refetch`, `totalRefetch`).
+
+## 8. API 레이어 타입
+
+- **페이지네이션 리스트**: `getXxxList`는 `api.get<APIResponse<APIResponseData<Item>>>(...)` 로 선언한다.
+- **단일/합계**: `api.get<APIResponse<TotalItem>>(...)` 로 선언한다.
+- `select`에서 `data.data.data`를 쓰는 구조와 위 API 응답 타입이 일치해야 한다.
+
+## 9. 페이징(페이지네이션) 처리
+
+리스트 API가 **서버 페이지네이션**을 지원할 때 아래 패턴을 따른다.
+
+### 9.1 API·파라미터
+
+- 리스트 조회 파라미터 타입에 **`page`, `size`** 를 포함한다 (예: `page?: number`, `size?: number` 또는 `PageParams` 확장).
+- 리스트 API는 `APIResponse<APIResponseData<Item>>` 를 반환한다. `APIResponseData` 에는 `content`, `number`, `size`, `totalElements` 등이 있어야 한다.
+- 쿼리 팩토리의 list 쿼리 `TData` 는 **`APIResponseData<ItemType>`** 로 둔다.
+
+### 9.2 페이지 상태와 핸들러
+
+- 페이지 컴포넌트의 filter/검색 파라미터 state 에 **`page`, `size`** 를 포함한다.
+- **초기값**: `page: 0`, `size: 100` (또는 `PAGE_SIZES` 중 하나).
+- **페이지 변경 핸들러**: `GridPageChangeEvent` 의 `e.page.skip`, `e.page.take` 로 페이지 인덱스와 size 를 계산해 state 를 갱신한다.
+
+```ts
+const handlePageFunction = (e: GridPageChangeEvent) => {
+  const { skip, take } = e.page;
+  const pageIndex = skip / take;
+  setFilterParams((prev) => ({ ...prev, page: pageIndex, size: take }));
+};
+```
+
+- **검색/필터 적용 시**: 새 검색일 때는 **`page: 0`** 으로 초기화하고, `size` 는 기존 값을 유지하거나 기본값(예: `filterParams.size ?? 100`)을 넣는다.
+
+### 9.3 그리드에 전달
+
+- **데이터**: `data={data?.content ?? []}` (list 쿼리 결과는 `APIResponseData<Item>`).
+- **페이지 정보**: `getPageInfo(data)`(`@shared/utils`)로 `total`, `skip`, `take`, `pageable` 을 얻어 Grid 에 스프레드한다.
+
+```ts
+const pageInfo = getPageInfo(data);
+<Grid
+  data={data?.content ?? []}
+  pageable={{ buttonCount: 10, pageSizes: [...PAGE_SIZES] }}
+  {...pageInfo}
+  onPageChange={handlePageFunction}
+/>
+```
+
+- **푸터(합계)**: 리스트 응답에 `total` 이 없으면 별도 listTotal 쿼리의 `totalData` 를 사용한다.
+- **페이징 미지원 API**: 응답이 `APIResponseData` 형태가 아니면 `getPageInfo`/`pageable`/`onPageChange` 를 쓰지 않고, `pageable` 없이 그리드만 렌더한다.

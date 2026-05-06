@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import ChartDemoClient from "./ChartDemoClient";
 import type { TickerInfo } from "@/components/chart/GoldChart";
+import { AppNav } from "@/components/layout/AppNav";
 
 function fmt(n: number) {
   return n.toLocaleString("ko-KR", {
@@ -23,8 +24,14 @@ export default function TradingViewPilotPage() {
 
   return (
     <main className="">
+      <AppNav title="lightweight-charts" />
       <section className={`text-lg font-bold font-tahoma mb-3 ${colorClass}`}>
-        <div className="mb-0 leading-5">{ticker ? fmt(ticker.price) : "—"}</div>
+        {/* 상단 현재가 표시 */}
+        <div className="mb-0 leading-5">
+          {ticker ? fmt(ticker.price) : "—"} KRW
+        </div>
+
+        {/* 하단 변동률 표시 (상/하향 화살표 + 변동률) */}
         <div className="text-[10px] flex items-center gap-2 leading-3">
           <span>
             {ticker

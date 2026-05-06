@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { AppNav } from "@/components/layout/AppNav";
+
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,10 +28,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <div className="mx-auto max-w-2xl space-y-6 px-4">
-          <AppNav />
-          {children}
-        </div>
+        <div className="mx-auto max-w-2xl space-y-6 px-4">{children}</div>
       </body>
     </html>
   );

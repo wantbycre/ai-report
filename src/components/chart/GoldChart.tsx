@@ -17,6 +17,37 @@ import {
 import { Button } from "@/components/ui/button";
 import { goldChartMockCandles } from "./goldChartMockData";
 
+/**
+ * CandlestickData 한 봉(캔들)의 핵심 필드입니다.
+ * 
+ * time
+ * 이 봉이 속한 시각(또는 날짜) 입니다.
+ * x축 위치를 결정합니다.
+ * 여기서는 UTCTimestamp(초 단위 UTC)로 넣고 있습니다.
+
+ * open
+ * 해당 봉 시작 시점의 시가(첫 가격) 입니다.
+ * 캔들 몸통의 한쪽 끝이 됩니다.
+ * 캔들 몸통의 한쪽 끝이 됩니다.
+ 
+ * high
+ * 해당 봉 구간에서 나온 최고가 입니다.
+ * 윗꼬리(upper wick)의 끝을 결정합니다.
+
+ * low
+ * 해당 봉 구간에서 나온 최저가 입니다.
+ * 아랫꼬리(lower wick)의 끝을 결정합니다.
+
+ * close
+ * 해당 봉 종료 시점의 종가(마지막 가격) 입니다.
+ * 캔들 몸통의 반대쪽 끝이 됩니다.
+ * 추가로, open과 close의 관계로 상승/하락이 결정됩니다.
+
+close > open → 상승봉 (upColor)
+close < open → 하락봉 (downColor)
+ * 
+ */
+
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
 type Timeframe = "1m" | "1h" | "1d" | "1w" | "1M" | "1y";
@@ -155,7 +186,11 @@ const toLineData = (data: CandlestickData[]): LineData[] =>
   data.map((c) => ({ time: c.time, value: c.close }));
 
 /** 전체 데이터 중 최근 2년치만 화면에 노출. 인트라데이는 fitContent 사용. */
-function applyVisibleRange(chart: IChartApi, tf: Timeframe, data: CandlestickData[]) {
+function applyVisibleRange(
+  chart: IChartApi,
+  tf: Timeframe,
+  data: CandlestickData[],
+) {
   if (tf === "1m" || tf === "1h" || data.length === 0) {
     chart.timeScale().fitContent();
     return;
@@ -163,7 +198,9 @@ function applyVisibleRange(chart: IChartApi, tf: Timeframe, data: CandlestickDat
   const lastStr = data[data.length - 1].time as string; // "YYYY-MM-DD"
   const [y, mo, d] = lastStr.split("-").map(Number);
   const fromStr = `${y - 2}-${String(mo).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-  chart.timeScale().setVisibleRange({ from: fromStr as Time, to: lastStr as Time });
+  chart
+    .timeScale()
+    .setVisibleRange({ from: fromStr as Time, to: lastStr as Time });
 }
 
 // ─── 라이브 캔들 상태 ─────────────────────────────────────────────────────────

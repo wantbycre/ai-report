@@ -1,0 +1,69 @@
+---
+description: 페이지/기능 분리 및 features 폴더 구조 (라우터·API·hooks·model·ui)
+alwaysApply: false
+---
+
+# 프로젝트 구조: pages vs features
+
+## 1. src/pages — 라우터 전용
+
+- **역할**: 라우팅만 담당. 해당 경로에서 어떤 feature를 렌더할지 연결.
+- **내용**: 라우트 컴포넌트, 경로별 feature import 및 렌더.
+- **금지**: 비즈니스 로직, API 호출, 복잡한 UI는 pages에 두지 않는다.
+
+```tsx
+// ✅ pages는 이렇게만
+export default function AuthPageRoute() {
+  return <AuthPage />; // feature UI 사용
+}
+```
+
+## 2. 모든 기능은 src/features로
+
+- 신규 기능 추가·리팩터링 시 **실제 구현은 `src/features/<feature-name>/`** 에 둔다.
+- pages는 해당 feature의 UI(또는 페이지 컴포넌트)만 import해서 보여준다.
+
+## 3. feature 폴더 구조
+
+각 feature는 아래 4개 디렉터리를 사용한다.
+
+```
+src/features/<feature-name>/
+  api/        # API 레이어
+  hooks/      # 해당 기능 전용 훅
+  model/      # 타입·상수
+  ui/         # 해당 기능의 모든 화면·컴포넌트
+```
+
+| 디렉터리  | 용도                | 예시                            |
+| --------- | ------------------- | ------------------------------- |
+| **api**   | fetchers + queries  | `fetchers.ts`, `queries.ts`     |
+| **hooks** | 해당 기능만 쓰는 훅 | `useStoreUserAndNavigate.ts`    |
+| **model** | types, const        | `types.ts`, `consts.ts`         |
+| **ui**    | 화면·폼·공통 UI     | `AuthPage.tsx`, `LoginForm.tsx` |
+
+## 4. api: fetchers + queries
+
+- **fetchers**: 실제 HTTP 호출 함수 (예: `postAuthLogin`, `getOrderList`).
+- **queries**: React Query용 `queryOptions` / `mutationOptions` (쿼리 키, `queryFn`/`mutationFn`).
+- **onSuccess 등 콜백**: 뮤테이션/쿼리 옵션에는 넣지 않고, **UI(useMutation/useQuery 호출부)** 에서 설정.
+
+```ts
+// api/fetchers.ts — API 모음
+export const postAuthLogin = (data: AuthLoginPayload) => api.post(...);
+export const postAuthSignup = (data: AuthSignupPayload) => api.post(...);
+
+// api/queries.ts — 옵션만 (onSuccess는 UI에서)
+export const authMutations = {
+  signIn: () => mutationOptions({ mutationFn: postAuthLogin }),
+  signUp: () => mutationOptions({ mutationFn: postAuthSignup }),
+};
+```
+
+## 5. 작업·리팩터링 시 적용 순서
+
+1. **pages**: 라우터만 두고, feature의 UI 컴포넌트만 import.
+2. **features**: `api` / `hooks` / `model` / `ui` 구조로 이전 또는 신규 생성.
+3. **api**: fetchers에 API 함수, queries에 query/mutation 옵션 정의.
+4. **model**: 타입·상수 정의 후 api/ui에서 import.
+5. **ui**: 화면·폼 구성, 필요 시 hooks 사용, useMutation/useQuery 호출부에서 onSuccess 등 설정.
