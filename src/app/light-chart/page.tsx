@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import ChartDemoClient from "./ChartDemoClient";
-import type { TickerInfo } from "@/components/chart/GoldChart";
+import type { TickerInfo } from "@/components/chart/light-chart/lightChartTypes";
 import { AppNav } from "@/components/layout/AppNav";
 
 function fmt(n: number) {
@@ -47,8 +47,8 @@ export default function LightChartSamplePage() {
       </section>
 
       <footer className="mb-10 mt-5 text-xs text-zinc-500 dark:text-zinc-500">
-        고정 뷰(스크롤 비활성) · 일/주/분기 24h 분봉 mock · 년 12 월봉 · 전환 시
-        좌→우 애니메이션
+        고정 뷰(스크롤·확대 비활성) · UTC 1일 분봉(00:00~현재) · 1주 15분봉 ·
+        3개월/1년/전체 일봉 mock · 거래량·최고·최저 옵션 · 매수평균 상수선
       </footer>
     </main>
   );

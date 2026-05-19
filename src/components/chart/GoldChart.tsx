@@ -45,8 +45,7 @@ import { goldChartMockCandles } from "./goldChartMockData";
 
 close > open → 상승봉 (upColor)
 close < open → 하락봉 (downColor)
- * 
- */
+*/
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 

@@ -2,10 +2,10 @@
 
 import dynamic from "next/dynamic";
 import { Spinner } from "@/components/ui/spinner";
-import type { TickerInfo } from "@/components/chart/GoldChart";
+import type { TickerInfo } from "@/components/chart/light-chart/lightChartTypes";
 
-const LightChartFixedSample = dynamic(
-  () => import("@/components/chart/LightChartFixedSample"),
+const LightChartPanel = dynamic(
+  () => import("@/components/chart/light-chart/LightChartPanel"),
   {
     ssr: false,
     loading: () => (
@@ -21,5 +21,5 @@ interface Props {
 }
 
 export default function ChartDemoClient({ onTick }: Props) {
-  return <LightChartFixedSample onTick={onTick} />;
+  return <LightChartPanel onTick={onTick} />;
 }
