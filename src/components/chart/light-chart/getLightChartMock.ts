@@ -22,8 +22,10 @@ function buildBars(range: ChartRange) {
   }
 }
 
+/** mock 로드 시 [옵션 1] periodStats·[옵션 3] bars[].volume 포함 반환 */
 export function getLightChartMock(range: ChartRange): LightChartMockResult {
   const bars = buildBars(range);
+  /** [옵션 1] 최고·최저 금액/날짜 */
   const periodStats = buildPeriodStats(bars);
   const ticker = tickerFromBars(bars) ?? {
     price: 0,

@@ -10,9 +10,9 @@ const navItems = [
   { href: "/light-chart", label: "light-chart" },
 ] as const;
 
-export function AppNav({ title }: { title: string }) {
+export function AppNav({ title }: { title?: string }) {
   return (
-    <nav className="mb-0 flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <nav className="pt-3 mb-3 flex justify-between">
       <h1 className="flex flex-wrap items-center gap-5">
         <Image
           src="/new_logo_light.svg"
@@ -20,7 +20,6 @@ export function AppNav({ title }: { title: string }) {
           width={123}
           height={30}
         />
-        <span className="text-2xl font-bold underline">({title})</span>
       </h1>
       {/* <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium text-zinc-600 underline-offset-4 dark:text-zinc-400">
         {navItems.map(({ href, label }) => (

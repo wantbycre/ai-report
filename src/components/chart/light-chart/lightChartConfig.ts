@@ -1,22 +1,36 @@
 import type { ChartRange, ChartType } from "./lightChartTypes";
 
-/** 샘플 매수평균 단가 (추후 API 연동) — 8구간(보합) 부근 */
-export const SAMPLE_AVG_BUY_PRICE = 227_400;
+// =============================================================================
+// 차트 UI 옵션 상수
+// - [옵션 2] 평균매수 라인
+// - [옵션 3] 하단 거래량 막대그래프
+// (옵션 1·4 상수는 lightChartTypes.ts / LightChartPanel.tsx 참고)
+// =============================================================================
 
-export const CHART_HEIGHT = 500;
+/** [옵션 2] 평균매수 가격선에 표시할 샘플 단가(KRW). 추후 API 매수평균으로 교체 */
+export const SAMPLE_AVG_BUY_PRICE = 228_200;
+
+export const CHART_HEIGHT = 400;
 
 export const CHART_COLORS = {
   line: "#dd3c44",
   candleUp: "#dd3c44",
   candleDown: "#1375ec",
+  /** [옵션 2] 평균매수 price line 색상 */
   avgBuyLine: "#2563eb",
+  /** [옵션 3] 하단 거래량 Histogram 막대 색상(회색 통일) */
   volumeBar: "rgba(160,160,160,0.55)",
 } as const;
 
-/** 가격·거래량 영역 분할 (오버레이 스케일 `""` = 하단 거래량 패널) */
+/**
+ * [옵션 3] 하단 거래량 패널 레이아웃
+ * - main: 가격(라인/캔들)이 차지하는 세로 비율
+ * - volume: 오버레이 스케일(`""`)에 그리는 거래량 막대 영역
+ * - mainOnly: 거래량 OFF일 때 가격이 전체 높이를 쓰도록 하는 margin
+ */
 export const VOLUME_PANE_SCALE = {
-  main: { top: 0.05, bottom: 0.28 },
-  volume: { top: 0.72, bottom: 0 },
+  main: { top: 0.05, bottom: 0.28 }, // 가격: 위 5% ~ 아래 82%
+  volume: { top: 0.8, bottom: 0 }, // 거래량: 아래 18%만 사용
   mainOnly: { top: 0.05, bottom: 0.05 },
 } as const;
 

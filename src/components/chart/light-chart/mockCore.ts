@@ -23,11 +23,24 @@ const TEN_SEGMENT_PHASES: MarketPhase[] = [
   "flat", // 8      (7~8)
   "mildUp", // 9    (8~10)
   "mildUp", // 10   (8~10)
+
+  "strongDown", // 6 (4~7)
+  "flat", // 7      (4~7 / 7~8 → 보합)
+  "mildUp", // 3    (2~4)
+  "strongDown", // 4 (2~4 / 4~7 → 하락)
+
+  "strongUp", // 4 (2~4 / 4~7 → 하락)
+  "strongUp", // 5 (4~7)
+  "strongUp", // 6 (4~7)
+
+  "strongUp", // 1  (1~2)
+  "strongDown", // 5 (4~7)
+  "strongUp", // 2  (1~2, 2~4)
 ];
 
 export function getSegmentIndex(index: number, barCount: number): number {
   if (barCount <= 1) return 0;
-  return Math.min(9, Math.floor((index * 10) / barCount));
+  return Math.min(18, Math.floor((index * 20) / barCount));
 }
 
 function phaseDrift(phase: MarketPhase, vol: number, r1: number): number {
@@ -49,7 +62,11 @@ export function ymdUtc(year: number, month0: number, day: number): string {
   return `${year}-${m}-${d}`;
 }
 
-export function isWeekendUtc(year: number, month0: number, day: number): boolean {
+export function isWeekendUtc(
+  year: number,
+  month0: number,
+  day: number,
+): boolean {
   const w = new Date(Date.UTC(year, month0, day)).getUTCDay();
   return w === 0 || w === 6;
 }
@@ -106,10 +123,12 @@ export function nextOhlcvBar({
   const bodyBot = Math.min(open, close);
   const high = round2(bodyTop + r2 * vol * 0.4);
   const low = round2(Math.max(startPrice * 0.88, bodyBot - r3 * vol * 0.4));
+  /** [옵션 3] mock 거래량 — toVolumeData() → HistogramSeries */
   const volume = Math.max(
     1,
     Math.round(
-      (phase === "flat" ? 8 : 20) + r4 * (phase === "strongUp" || phase === "strongDown" ? 200 : 140),
+      (phase === "flat" ? 8 : 20) +
+        r4 * (phase === "strongUp" || phase === "strongDown" ? 200 : 140),
     ) * volScale,
   );
 
@@ -119,9 +138,19 @@ export function nextOhlcvBar({
   };
 }
 
+/** [옵션 1] 선택 기간 전체에서 최고가·최저가 봉을 찾아 오버레이 문구용 문자열 생성 */
 export function buildPeriodStats(bars: OhlcvBar[]): PeriodHighLow {
   if (bars.length === 0) {
-    return { high: "—", low: "—", highDate: "", lowDate: "" };
+    return {
+      high: "—",
+      low: "—",
+      highDate: "",
+      lowDate: "",
+      highTime: 0 as OhlcvBar["time"],
+      highPrice: 0,
+      lowTime: 0 as OhlcvBar["time"],
+      lowPrice: 0,
+    };
   }
   const hi = bars.reduce((a, b) => (a.high > b.high ? a : b));
   const lo = bars.reduce((a, b) => (a.low < b.low ? a : b));
@@ -130,9 +159,14 @@ export function buildPeriodStats(bars: OhlcvBar[]): PeriodHighLow {
     low: Math.round(lo.low).toLocaleString("ko-KR"),
     highDate: formatBarDate(hi.time),
     lowDate: formatBarDate(lo.time),
+    highTime: hi.time,
+    highPrice: hi.high,
+    lowTime: lo.time,
+    lowPrice: lo.low,
   };
 }
 
+/** [옵션 1] 최고·최저 오버레이에 붙는 날짜 라벨 포맷(YY/MM/DD) */
 export function formatBarDate(time: OhlcvBar["time"]): string {
   if (typeof time === "number") {
     const d = new Date(time * 1000);

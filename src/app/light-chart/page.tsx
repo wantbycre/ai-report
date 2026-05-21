@@ -24,7 +24,7 @@ export default function LightChartSamplePage() {
 
   return (
     <main className="">
-      <AppNav title="light-chart 샘플 by 비단" />
+      <AppNav />
       <section className={`mb-3 font-tahoma text-lg font-bold ${colorClass}`}>
         <div className="mb-0 leading-5">
           {ticker ? fmt(ticker.price) : "—"} KRW
@@ -42,7 +42,7 @@ export default function LightChartSamplePage() {
           </span>
         </div>
       </section>
-      <section className="rounded-xl bg-background shadow-sm">
+      <section className="">
         <ChartDemoClient onTick={handleTick} />
       </section>
 
