@@ -6,9 +6,8 @@ import { seededUnit, seededUnit2 } from "./prng";
 export const MOCK_BASE_START = 228_000;
 
 /**
- * 전체 봉을 10등분한 구간별 국면 (1-based 구간 번호 기준)
- * 1~2 강상승 | 3 약상승(2~4) | 4~6 강하락(4~7) | 7~8 보합 | 9~10 약상승
- * (4·7구간은 겹치는 지시가 있어 하락·보합 우선 적용)
+ * 전체 봉을 10등분한 구간별 국면 (배열 인덱스 0~9 = 1~10구간)
+ * 1~2 강상승 | 3 약상승 | 4~6 강하락 | 7~8 보합 | 9~10 약상승
  */
 type MarketPhase = "strongUp" | "mildUp" | "strongDown" | "flat";
 
@@ -40,7 +39,10 @@ const TEN_SEGMENT_PHASES: MarketPhase[] = [
 
 export function getSegmentIndex(index: number, barCount: number): number {
   if (barCount <= 1) return 0;
-  return Math.min(18, Math.floor((index * 20) / barCount));
+  return Math.min(
+    TEN_SEGMENT_PHASES.length - 1,
+    Math.floor((index * TEN_SEGMENT_PHASES.length) / barCount),
+  );
 }
 
 function phaseDrift(phase: MarketPhase, vol: number, r1: number): number {
@@ -81,7 +83,6 @@ interface NextBarInput {
   salt: number;
   price: number;
   time: OhlcvBar["time"];
-  startPrice?: number;
   volScale?: number;
 }
 
@@ -92,7 +93,6 @@ export function nextOhlcvBar({
   salt,
   price,
   time,
-  startPrice = MOCK_BASE_START,
   volScale = 1,
 }: NextBarInput): { bar: OhlcvBar; nextPrice: number } {
   const r1 = seededUnit(index, salt);
@@ -122,7 +122,9 @@ export function nextOhlcvBar({
   const bodyTop = Math.max(open, close);
   const bodyBot = Math.min(open, close);
   const high = round2(bodyTop + r2 * vol * 0.4);
-  const low = round2(Math.max(startPrice * 0.88, bodyBot - r3 * vol * 0.4));
+  // 저가 = 봉 하단에서 위크 길이만큼. 고정 플로어(startPrice*0.88) 대신
+  // 현재 봉 가격 기준 안전 하한만 두어 강하락 구간의 '바닥 평탄화'를 방지.
+  const low = round2(Math.max(open * 0.5, bodyBot - r3 * vol * 0.4));
   /** [옵션 3] mock 거래량 — toVolumeData() → HistogramSeries */
   const volume = Math.max(
     1,

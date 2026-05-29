@@ -16,7 +16,8 @@ export function buildMockDaily({
   tradingDays,
   salt,
 }: BuildDailyOptions): OhlcvBar[] {
-  const now = new Date();
+  // KST 달력 기준 '오늘'부터 역순으로 영업일을 채운다.
+  const now = new Date(Date.now() + 9 * 60 * 60 * 1000);
   let y = now.getUTCFullYear();
   let m0 = now.getUTCMonth();
   let d = now.getUTCDate();

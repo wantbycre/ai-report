@@ -29,9 +29,9 @@ export const CHART_COLORS = {
  * - mainOnly: 거래량 OFF일 때 가격이 전체 높이를 쓰도록 하는 margin
  */
 export const VOLUME_PANE_SCALE = {
-  main: { top: 0.05, bottom: 0.28 }, // 가격: 위 5% ~ 아래 82%
-  volume: { top: 0.8, bottom: 0 }, // 거래량: 아래 18%만 사용
-  mainOnly: { top: 0.05, bottom: 0.05 },
+  main: { top: 0.05, bottom: 0.2 }, // 가격: 상단 5% ~ 80% (높이의 5%~80% 차지)
+  volume: { top: 0.8, bottom: 0 }, // 거래량: 하단 20% (80%~100%) — 가격 영역과 경계 일치
+  mainOnly: { top: 0.05, bottom: 0.05 }, // 거래량 OFF 시 가격이 전체 높이 사용
 } as const;
 
 export const RANGES: { key: ChartRange; label: string }[] = [

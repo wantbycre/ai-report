@@ -18,6 +18,7 @@ import {
   ColorType,
   CrosshairMode,
   LineStyle,
+  TickMarkType,
   TrackingModeExitMode,
   createChart,
   type IChartApi,
@@ -50,11 +51,26 @@ import type {
 } from "./lightChartTypes";
 import { toCandlestick } from "./lightChartTypes";
 
-function formatUtcHm(ts: number): string {
-  const dt = new Date(ts * 1000);
+/** 국내 금거래소 기준 → 모든 시각 라벨은 KST(UTC+9)로 표기 */
+const KST_OFFSET_SEC = 9 * 60 * 60;
+
+/** [옵션 4] 크로스헤어 툴팁 레이아웃 상수 */
+const TOOLTIP_WIDTH = 132;
+const TOOLTIP_OFFSET_X = 12;
+const TOOLTIP_OFFSET_Y = 36;
+
+function formatKstHm(ts: number): string {
+  const dt = new Date((ts + KST_OFFSET_SEC) * 1000);
   const hh = String(dt.getUTCHours()).padStart(2, "0");
   const mm = String(dt.getUTCMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
+}
+
+function formatKstMonthDay(ts: number): string {
+  const dt = new Date((ts + KST_OFFSET_SEC) * 1000);
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  return `${mm}/${dd}`;
 }
 
 /** [옵션 4] 크로스헤어 툴팁에 표시할 가격 문자열 포맷 */
@@ -161,6 +177,11 @@ function applyVolumePaneLayout(chart: IChartApi, showVolume: boolean) {
       visible: false,
       scaleMargins: VOLUME_PANE_SCALE.mainOnly,
     });
+    // 거래량(빈 데이터) 오버레이 스케일을 화면 밖으로 밀어 잔여 레이아웃 제거
+    chart.priceScale("").applyOptions({
+      visible: false,
+      scaleMargins: { top: 1, bottom: 0 },
+    });
   }
 }
 
@@ -180,8 +201,15 @@ function createLightChart(el: HTMLDivElement): IChartApi {
       fixRightEdge: true,
       shiftVisibleRangeOnNewBar: false,
       lockVisibleTimeRangeOnResize: true,
-      tickMarkFormatter: (time: Time) => {
-        if (typeof time === "number") return formatUtcHm(time);
+      // intraday(1d/1w)는 KST 시:분, 날짜 경계 눈금은 MM/DD로 표기해
+      // 1주(7일치)에서도 어느 날인지 구분되게 한다.
+      tickMarkFormatter: (time: Time, tickMarkType: TickMarkType) => {
+        if (typeof time === "number") {
+          const isTimeTick =
+            tickMarkType === TickMarkType.Time ||
+            tickMarkType === TickMarkType.TimeWithSeconds;
+          return isTimeTick ? formatKstHm(time) : formatKstMonthDay(time);
+        }
         if (typeof time === "string") return time.slice(5).replace("-", "/");
         return `${String(time.month).padStart(2, "0")}/${String(time.day).padStart(2, "0")}`;
       },
@@ -332,7 +360,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       color: CHART_COLORS.avgBuyLine,
       lineWidth: 2,
       lineStyle: LineStyle.Dotted,
-      axisLabelVisible: true, // 매수평균 라벨 숨기기
+      axisLabelVisible: false, // 우측 가격축을 숨기므로 축 라벨도 비활성(title만 표시)
       title: "매수평균",
     });
 
@@ -490,6 +518,9 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       if (seriesRef.current) {
         chart.removeSeries(seriesRef.current);
         seriesRef.current = null;
+        // 제거된 시리즈에 붙어있던 평균매수 PriceLine 참조도 함께 무효화
+        // (새 시리즈에 stale 핸들을 removePriceLine 하면 에러)
+        avgPriceLineRef.current = null;
       }
       if (volumeSeriesRef.current) {
         chart.removeSeries(volumeSeriesRef.current);
@@ -621,10 +652,10 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
               className="pointer-events-none absolute z-30 rounded-md border border-border bg-background/95 px-2 py-1 text-xs font-semibold text-foreground shadow-md"
               style={{
                 left: Math.min(
-                  crosshairTooltip.x + 12,
-                  (chartAreaRef.current?.clientWidth ?? 300) - 132,
+                  crosshairTooltip.x + TOOLTIP_OFFSET_X,
+                  (chartAreaRef.current?.clientWidth ?? 300) - TOOLTIP_WIDTH,
                 ),
-                top: Math.max(8, crosshairTooltip.y - 36),
+                top: Math.max(8, crosshairTooltip.y - TOOLTIP_OFFSET_Y),
               }}
             >
               {formatPrice(crosshairTooltip.price)} KRW
