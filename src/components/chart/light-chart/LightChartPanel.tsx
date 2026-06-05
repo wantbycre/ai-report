@@ -360,7 +360,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       color: CHART_COLORS.avgBuyLine,
       lineWidth: 2,
       lineStyle: LineStyle.Dotted,
-      axisLabelVisible: false, // 우측 가격축을 숨기므로 축 라벨도 비활성(title만 표시)
+      axisLabelVisible: true, // 우측 가격축을 숨기므로 축 라벨도 비활성(title만 표시)
       title: "매수평균",
     });
 
