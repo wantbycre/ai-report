@@ -24,7 +24,7 @@ export default function TradingViewPilotPage() {
 
   return (
     <main className="">
-      <AppNav title="lightweight-charts" />
+      <AppNav />
       <section className={`text-lg font-bold font-tahoma mb-3 ${colorClass}`}>
         {/* 상단 현재가 표시 */}
         <div className="mb-0 leading-5">

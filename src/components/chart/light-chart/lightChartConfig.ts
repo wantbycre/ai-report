@@ -1,3 +1,4 @@
+import type { AutoscaleInfoProvider } from "lightweight-charts";
 import type { ChartRange, ChartType } from "./lightChartTypes";
 
 // =============================================================================
@@ -8,9 +9,31 @@ import type { ChartRange, ChartType } from "./lightChartTypes";
 // =============================================================================
 
 /** [옵션 2] 평균매수 가격선에 표시할 샘플 단가(KRW). 추후 API 매수평균으로 교체 */
-export const SAMPLE_AVG_BUY_PRICE = 228_200;
+export const SAMPLE_AVG_BUY_PRICE = 228_089;
 
-export const CHART_HEIGHT = 400;
+/** [옵션 2] 자동 스케일 범위에 매수평균가를 항상 포함해 가격선이 화면 밖으로 밀리지 않게 함 */
+export function makeAvgBuyAutoscaleProvider(
+  avgPrice: number,
+): AutoscaleInfoProvider {
+  return (original) => {
+    const base = original();
+    if (base === null || base.priceRange === null) {
+      return {
+        priceRange: { minValue: avgPrice, maxValue: avgPrice },
+      };
+    }
+    const { minValue, maxValue } = base.priceRange;
+    return {
+      ...base,
+      priceRange: {
+        minValue: Math.min(minValue, avgPrice),
+        maxValue: Math.max(maxValue, avgPrice),
+      },
+    };
+  };
+}
+
+export const CHART_HEIGHT = 300;
 
 export const CHART_COLORS = {
   line: "#dd3c44",

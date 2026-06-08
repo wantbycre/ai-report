@@ -41,8 +41,10 @@ export interface PeriodHighLow {
 
 /** [옵션 1] 최고·최저 라벨 픽셀 좌표 (차트 pane 기준) */
 export interface HighLowLabelPosition {
-  x: number;
-  y: number;
+  left: number;
+  top: number;
+  /** 양끝에서 pane 밖으로 나가지 않도록 조절한 translateX */
+  translateX: "-50%" | "0%" | "-100%";
 }
 
 export interface LightChartMockResult {

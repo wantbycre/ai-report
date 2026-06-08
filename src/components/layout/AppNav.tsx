@@ -1,50 +1,70 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
+import { usePathname } from "next/navigation";
+import { Sparkline } from "@/components/chart/sparkline/Sparkline";
 
-const navItems = [
-  { href: "/", label: "홈" },
-  { href: "/reports", label: "Reports" },
-  { href: "/trading-view", label: "트레이딩뷰" },
-  { href: "/light-chart", label: "light-chart" },
-] as const;
+export function AppNav() {
+  const pathname = usePathname();
+  const isLightChart = pathname === "/light-chart";
 
-export function AppNav({ title }: { title?: string }) {
   return (
-    <nav className="pt-3 mb-3 flex justify-between">
-      <h1 className="flex flex-wrap items-center gap-5">
-        <Image
-          src="/new_logo_light.svg"
-          alt="금방금방"
-          width={123}
-          height={30}
-        />
-      </h1>
-      {/* <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium text-zinc-600 underline-offset-4 dark:text-zinc-400">
-        {navItems.map(({ href, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className="hover:underline"
-          >
-            {label}
+    <nav className="pt-3 px-4">
+      {isLightChart ? (
+        <div>
+          <Link href="/light-list">
+            <span className="inline-flex items-center gap-1 text-sm font-medium text-gray-700">
+              <svg
+                width="20"
+                height="20"
+                fill="currentColor"
+                className="mr-1"
+                aria-hidden="true"
+              >
+                <path d="M9.75 3.22a.75.75 0 0 1 0 1.06L6.06 8l3.69 3.72a.75.75 0 0 1-1.06 1.06l-4.22-4.25a.75.75 0 0 1 0-1.06l4.22-4.25a.75.75 0 0 1 1.06 0z" />
+              </svg>
+            </span>
           </Link>
-        ))}
-      </div> */}
-      <div>
-        <span
-          className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 via-yellow-300 to-yellow-600 text-base font-bold text-white shadow"
-          aria-label="금"
+        </div>
+      ) : null}
+      <div className="flex justify-between">
+        <div>
+          <h1 className="flex flex-wrap items-center gap-5 mb-3">
+            {/* <Image
+            src="/new_logo_light.svg"
+            alt="금방금방"
+            width={123}
+            height={30}
+          /> */}
+            <span
+              className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-yellow-400 via-yellow-300 to-yellow-600 text-base font-bold text-white shadow"
+              aria-label="금"
+            >
+              금
+            </span>
+          </h1>
+          <section
+            className={`mb-3 font-tahoma text-lg font-bold text-red-500`}
+          >
+            <div className="mb-0 leading-5">
+              220,000
+              <span className="text-xs">/1g</span>
+            </div>
+            <div className="flex items-center gap-2 text-[10px] leading-3">
+              <span>+1.23%</span>
+              <span>▲ 2,300</span>
+            </div>
+          </section>
+        </div>
+
+        <Link
+          href="/light-chart"
+          aria-label="차트 상세로 이동"
+          className="block h-[60px] w-[150px] bg-gray-50 mt-2"
         >
-          금
-        </span>
+          <Sparkline />
+        </Link>
       </div>
-      {/* <div className="flex items-center gap-4">
-          <Link href="/login">Login</Link>
-          <Link href="/signup">Signup</Link>
-          <button onClick={handleLogout}>Logout</button>
-        </div> */}
     </nav>
   );
 }

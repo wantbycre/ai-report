@@ -3,8 +3,11 @@ import { MOCK_BASE_START, nextOhlcvBar, utcTimestampFromMs } from "./mockCore";
 
 const SALT = 10_001;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+// 가로 밀도 완화: 1분봉(최대 ~1,440개)은 너무 촘촘해 라인이 빡빡해 보여
+// 5분봉(최대 ~288개)으로 표본을 줄여 데모 수준의 부드러운 곡선을 얻는다.
+const INTERVAL_MS = 20 * 60_000;
 
-/** KST 당일 00:00 ~ min(now, 23:59:59) 1분봉 — 10구간 국면 */
+/** KST 당일 00:00 ~ min(now, 23:59:59) 5분봉 — 10구간 국면 */
 export function buildMock1d(): OhlcvBar[] {
   const nowMs = Date.now();
   // now를 KST로 환산해 KST 달력상 '오늘'의 자정(UTC epoch)을 구한다.
@@ -15,12 +18,12 @@ export function buildMock1d(): OhlcvBar[] {
   const dayEnd = dayStart + 24 * 60 * 60 * 1000 - 1;
   const endMs = Math.min(nowMs, dayEnd);
 
-  const barCount = Math.floor((endMs - dayStart) / 60_000) + 1;
+  const barCount = Math.floor((endMs - dayStart) / INTERVAL_MS) + 1;
   const bars: OhlcvBar[] = [];
   let price = MOCK_BASE_START;
   let i = 0;
 
-  for (let t = dayStart; t <= endMs; t += 60_000) {
+  for (let t = dayStart; t <= endMs; t += INTERVAL_MS) {
     const { bar, nextPrice } = nextOhlcvBar({
       index: i,
       barCount,

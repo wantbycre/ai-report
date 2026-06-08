@@ -18,6 +18,7 @@ import {
   ColorType,
   CrosshairMode,
   LineStyle,
+  LineType,
   TickMarkType,
   TrackingModeExitMode,
   createChart,
@@ -36,6 +37,7 @@ import {
   CHART_COLORS,
   CHART_HEIGHT,
   CHART_TYPES,
+  makeAvgBuyAutoscaleProvider,
   RANGES,
   SAMPLE_AVG_BUY_PRICE,
   VOLUME_PANE_SCALE,
@@ -126,6 +128,30 @@ const toLineData = (bars: OhlcvBar[]): LineData[] =>
 const toCandles = (bars: OhlcvBar[]): CandlestickData[] =>
   bars.map((b) => toCandlestick(b));
 
+/** [옵션 1] 최고·최저 라벨 예상 반폭(px) — text-[10px] 기준 대략치 */
+const HIGH_LOW_LABEL_HALF_WIDTH = 72;
+const HIGH_LOW_EDGE_PAD = 4;
+
+/** 앵커 X를 pane 안에 맞추고, 좌/우 끝에서는 정렬 방식을 바꿔 overflow 방지 */
+function resolveHighLowLabelHorizontal(
+  anchorX: number,
+  paneWidth: number,
+): Pick<HighLowLabelPosition, "left" | "translateX"> {
+  const minCenter = HIGH_LOW_LABEL_HALF_WIDTH + HIGH_LOW_EDGE_PAD;
+  const maxCenter = paneWidth - HIGH_LOW_LABEL_HALF_WIDTH - HIGH_LOW_EDGE_PAD;
+
+  if (anchorX < minCenter) {
+    return { left: HIGH_LOW_EDGE_PAD, translateX: "0%" };
+  }
+  if (anchorX > maxCenter) {
+    return {
+      left: paneWidth - HIGH_LOW_EDGE_PAD,
+      translateX: "-100%",
+    };
+  }
+  return { left: anchorX, translateX: "-50%" };
+}
+
 /** [옵션 1] 최고·최저 봉 앵커 → 차트 pane 픽셀 좌표 */
 function computeHighLowLabelPositions(
   chart: IChartApi,
@@ -143,13 +169,18 @@ function computeHighLowLabelPositions(
   }
 
   const pane = chart.paneSize(0);
-  const pad = 4;
-  const clampX = (x: number) => Math.max(pad, Math.min(x, pane.width - pad));
-  const clampY = (y: number) => Math.max(pad, Math.min(y, pane.height - pad));
+  const clampY = (y: number) =>
+    Math.max(HIGH_LOW_EDGE_PAD, Math.min(y, pane.height - HIGH_LOW_EDGE_PAD));
 
   return {
-    high: { x: clampX(xHigh), y: clampY(yHigh) },
-    low: { x: clampX(xLow), y: clampY(yLow) },
+    high: {
+      ...resolveHighLowLabelHorizontal(xHigh, pane.width),
+      top: clampY(yHigh),
+    },
+    low: {
+      ...resolveHighLowLabelHorizontal(xLow, pane.width),
+      top: clampY(yLow),
+    },
   };
 }
 
@@ -160,6 +191,41 @@ const toVolumeData = (bars: OhlcvBar[]): HistogramData[] =>
     value: b.volume,
     color: CHART_COLORS.volumeBar,
   }));
+
+/** [옵션 2] 매수평균 수평 가격선 — 레이아웃 확정 후 attach */
+function attachAvgBuyPriceLine(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  series: ISeriesApi<any>,
+  lineRef: React.MutableRefObject<IPriceLine | null>,
+) {
+  if (lineRef.current) {
+    series.removePriceLine(lineRef.current);
+    lineRef.current = null;
+  }
+  lineRef.current = series.createPriceLine({
+    price: SAMPLE_AVG_BUY_PRICE,
+    color: CHART_COLORS.avgBuyLine,
+    lineWidth: 2,
+    lineStyle: LineStyle.Dotted,
+    lineVisible: true,
+    axisLabelVisible: false,
+    // title은 우측 가격축 영역에 그려져 visible:false일 때 보이지 않음 → HTML 오버레이 사용
+    title: "",
+  });
+}
+
+/** [옵션 2] 매수평균 라벨 Y좌표 — priceToCoordinate 기준 */
+function computeAvgBuyLabelTop(
+  chart: IChartApi,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  series: ISeriesApi<any>,
+): number | null {
+  const y = series.priceToCoordinate(SAMPLE_AVG_BUY_PRICE);
+  if (y === null) return null;
+  const pane = chart.paneSize(0);
+  const pad = 4;
+  return Math.max(pad, Math.min(y, pane.height - pad));
+}
 
 /** [옵션 3] 거래량 ON/OFF에 따라 가격·거래량 scaleMargins 분할/복원 */
 function applyVolumePaneLayout(chart: IChartApi, showVolume: boolean) {
@@ -292,6 +358,8 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
     low: HighLowLabelPosition;
   } | null>(null);
   const periodHighLowRef = useRef<PeriodHighLow | null>(null);
+  /** [옵션 2] 매수평균 라벨 Y좌표 (HTML 오버레이) */
+  const [avgBuyLabelTop, setAvgBuyLabelTop] = useState<number | null>(null);
   /** [옵션 4] 크로스헤어 커스텀 툴팁 상태 */
   const [crosshairTooltip, setCrosshairTooltip] =
     useState<CrosshairTooltip | null>(null);
@@ -308,6 +376,17 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
   useEffect(() => {
     periodHighLowRef.current = periodHighLow;
   }, [periodHighLow]);
+
+  /** [옵션 2] 차트 렌더 후 매수평균 라벨 Y좌표 동기화 */
+  const syncAvgBuyLabelPosition = () => {
+    const chart = chartRef.current;
+    const series = seriesRef.current;
+    if (!chart || !series) {
+      setAvgBuyLabelTop(null);
+      return;
+    }
+    setAvgBuyLabelTop(computeAvgBuyLabelTop(chart, series));
+  };
 
   /** [옵션 1] 차트 렌더 후 최고·최저 라벨 좌표 동기화 */
   const syncHighLowLabelPositions = (stats: PeriodHighLow | null) => {
@@ -350,20 +429,6 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       series.setData(toCandles(bars));
     }
 
-    /** [옵션 2] 평균매수 수평 가격선 — 기간과 무관하게 SAMPLE_AVG_BUY_PRICE 고정 */
-    if (avgPriceLineRef.current) {
-      series.removePriceLine(avgPriceLineRef.current);
-      avgPriceLineRef.current = null;
-    }
-    avgPriceLineRef.current = series.createPriceLine({
-      price: SAMPLE_AVG_BUY_PRICE,
-      color: CHART_COLORS.avgBuyLine,
-      lineWidth: 2,
-      lineStyle: LineStyle.Dotted,
-      axisLabelVisible: true, // 우측 가격축을 숨기므로 축 라벨도 비활성(title만 표시)
-      title: "매수평균",
-    });
-
     /** [옵션 3] 하단 거래량 패널 영역 비율 적용 */
     applyVolumePaneLayout(chart, options.showVolume);
 
@@ -382,6 +447,12 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
         key === "1d" || key === "1w"
           ? (last.time as UTCTimestamp)
           : (last.time as Time),
+    });
+
+    // 레이아웃·가시범위 확정 후 매수평균선·라벨을 붙여 pane 밖으로 밀리는 현상 방지
+    requestAnimationFrame(() => {
+      attachAvgBuyPriceLine(series, avgPriceLineRef);
+      syncAvgBuyLabelPosition();
     });
 
     /** [옵션 1] 최고·최저 오버레이용 periodStats 반영 */
@@ -484,9 +555,10 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       if (containerRef.current) {
         chart.applyOptions({ width: containerRef.current.clientWidth });
       }
-      requestAnimationFrame(() =>
-        syncHighLowLabelPositions(periodHighLowRef.current),
-      );
+      requestAnimationFrame(() => {
+        syncHighLowLabelPositions(periodHighLowRef.current);
+        syncAvgBuyLabelPosition();
+      });
     };
     window.addEventListener("resize", onResize);
 
@@ -504,6 +576,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       avgPriceLineRef.current = null;
       setCrosshairTooltip(null);
       setHighLowPositions(null);
+      setAvgBuyLabelTop(null);
     };
   }, []);
 
@@ -527,6 +600,8 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
         volumeSeriesRef.current = null;
       }
 
+      const avgBuyAutoscale = makeAvgBuyAutoscaleProvider(SAMPLE_AVG_BUY_PRICE);
+
       if (chartType === "candle") {
         seriesRef.current = chart.addSeries(CandlestickSeries, {
           upColor: CHART_COLORS.candleUp,
@@ -534,15 +609,18 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
           borderVisible: false,
           wickUpColor: CHART_COLORS.candleUp,
           wickDownColor: CHART_COLORS.candleDown,
+          autoscaleInfoProvider: avgBuyAutoscale,
         });
       } else {
         seriesRef.current = chart.addSeries(LineSeries, {
           color: CHART_COLORS.line,
           lineWidth: 2,
+          lineType: LineType.Curved, // 기본 라인을 곡선(큐빅 보간)으로 표시
           /** [옵션 4] 라인 위 크로스헤어 마커 */
           crosshairMarkerVisible: true,
           crosshairMarkerRadius: 4,
           priceLineVisible: false,
+          autoscaleInfoProvider: avgBuyAutoscale,
         });
       }
 
@@ -572,7 +650,66 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
 
   return (
     <div className="relative w-full">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+      <div className="relative w-full ">
+        <div ref={chartAreaRef} className="relative w-full touch-none ">
+          <div ref={containerRef} className="w-full" />
+          {/* [옵션 1] 최고·최저 — timeToCoordinate / priceToCoordinate 앵커 */}
+          {periodHighLow && showHighLow && highLowPositions ? (
+            <>
+              <div
+                className="pointer-events-none absolute z-20 whitespace-nowrap text-[10px] font-semibold tracking-tight text-red-500/90"
+                style={{
+                  left: highLowPositions.high.left,
+                  top: highLowPositions.high.top,
+                  transform: `translate(${highLowPositions.high.translateX}, calc(-100% - 6px))`,
+                }}
+              >
+                최고 {periodHighLow.high}({periodHighLow.highDate})
+              </div>
+              <div
+                className="pointer-events-none absolute z-20 whitespace-nowrap text-[10px] font-semibold tracking-tight text-blue-500/90"
+                style={{
+                  left: highLowPositions.low.left,
+                  top: highLowPositions.low.top,
+                  transform: `translate(${highLowPositions.low.translateX}, 6px)`,
+                }}
+              >
+                최저 {periodHighLow.low}({periodHighLow.lowDate})
+              </div>
+            </>
+          ) : null}
+          {/* [옵션 2] 매수평균 — 우측 가격축 숨김 시 createPriceLine title 대신 HTML 라벨 */}
+          {avgBuyLabelTop !== null ? (
+            <div
+              className="pointer-events-none absolute right-1 z-20 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+              style={{
+                top: avgBuyLabelTop,
+                transform: "translateY(-50%)",
+                backgroundColor: CHART_COLORS.avgBuyLine,
+              }}
+            >
+              매수평균
+            </div>
+          ) : null}
+          {/* [옵션 4] hover/터치 시 현재가 툴팁 */}
+          {crosshairTooltip ? (
+            <div
+              className="pointer-events-none absolute z-30 rounded-md border border-border bg-background/95 px-2 py-1 text-xs font-semibold text-foreground shadow-md"
+              style={{
+                left: Math.min(
+                  crosshairTooltip.x + TOOLTIP_OFFSET_X,
+                  (chartAreaRef.current?.clientWidth ?? 300) - TOOLTIP_WIDTH,
+                ),
+                top: Math.max(8, crosshairTooltip.y - TOOLTIP_OFFSET_Y),
+              }}
+            >
+              {formatPrice(crosshairTooltip.price)} KRW
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 mt-5">
         <div className="flex flex-wrap items-center gap-1">
           {RANGES.map(({ key, label }) => (
             <Button
@@ -616,51 +753,6 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
           >
             최고·최저
           </Button> */}
-        </div>
-      </div>
-      <div className="relative w-full">
-        <div ref={chartAreaRef} className="relative w-full touch-none">
-          <div ref={containerRef} className="w-full" />
-          {/* [옵션 1] 최고·최저 — timeToCoordinate / priceToCoordinate 앵커 */}
-          {periodHighLow && showHighLow && highLowPositions ? (
-            <>
-              <div
-                className="pointer-events-none absolute z-20 whitespace-nowrap text-sm font-semibold tracking-tight text-red-500/90"
-                style={{
-                  left: highLowPositions.high.x,
-                  top: highLowPositions.high.y,
-                  transform: "translate(-50%, calc(-100% - 6px))",
-                }}
-              >
-                최고 {periodHighLow.high}({periodHighLow.highDate})
-              </div>
-              <div
-                className="pointer-events-none absolute z-20 whitespace-nowrap text-sm font-semibold tracking-tight text-blue-500/90"
-                style={{
-                  left: highLowPositions.low.x,
-                  top: highLowPositions.low.y,
-                  transform: "translate(-50%, 6px)",
-                }}
-              >
-                최저 {periodHighLow.low}({periodHighLow.lowDate})
-              </div>
-            </>
-          ) : null}
-          {/* [옵션 4] hover/터치 시 현재가 툴팁 */}
-          {crosshairTooltip ? (
-            <div
-              className="pointer-events-none absolute z-30 rounded-md border border-border bg-background/95 px-2 py-1 text-xs font-semibold text-foreground shadow-md"
-              style={{
-                left: Math.min(
-                  crosshairTooltip.x + TOOLTIP_OFFSET_X,
-                  (chartAreaRef.current?.clientWidth ?? 300) - TOOLTIP_WIDTH,
-                ),
-                top: Math.max(8, crosshairTooltip.y - TOOLTIP_OFFSET_Y),
-              }}
-            >
-              {formatPrice(crosshairTooltip.price)} KRW
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
