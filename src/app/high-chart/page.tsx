@@ -24,15 +24,21 @@ export default function HighChartSamplePage() {
 
   return (
     <main className="">
-      <AppNav title="high-chart 샘플" />
+      <AppNav />
       <section className={`mb-3 font-tahoma text-lg font-bold ${colorClass}`}>
-        <div className="mb-0 leading-5">{ticker ? fmt(ticker.price) : "—"} KRW</div>
+        <div className="mb-0 leading-5">
+          {ticker ? fmt(ticker.price) : "—"} KRW
+        </div>
         <div className="flex items-center gap-2 text-[10px] leading-3">
           <span>
-            {ticker ? `${isUp ? "+" : ""}${ticker.changePercent.toFixed(2)}%` : "—"}
+            {ticker
+              ? `${isUp ? "+" : ""}${ticker.changePercent.toFixed(2)}%`
+              : "—"}
           </span>
           <span>
-            {ticker ? `${isUp ? "▲" : "▼"} ${fmt(Math.abs(ticker.changeAmount))}` : "—"}
+            {ticker
+              ? `${isUp ? "▲" : "▼"} ${fmt(Math.abs(ticker.changeAmount))}`
+              : "—"}
           </span>
         </div>
       </section>
