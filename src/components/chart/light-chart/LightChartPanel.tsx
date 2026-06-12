@@ -648,10 +648,74 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
     return () => cancelAnimationFrame(frameId);
   }, [range, chartType, showVolume, showHighLow]);
 
+  // TODO: 샘플시연후 제거
+  type SampleLayerKey =
+    | "unit"
+    | "chartType"
+    | "avgBuy"
+    | "volume"
+    | "highLow"
+    | "tooltip"
+    | "miniChart";
+
+  interface SampleLayerRect {
+    left: string;
+    top: string;
+    width: string;
+    height: string;
+  }
+
+  const SAMPLE_LAYER_RECTS: Record<SampleLayerKey, SampleLayerRect> = {
+    /** 기간(1일·1주…) 버튼 행 */
+    unit: { left: "0px", top: "316px", width: "230px", height: "37px" },
+    /** 라인/캔들 차트타입 버튼 행 */
+    chartType: { left: "560px", top: "316px", width: "103px", height: "37px" },
+    /** 매수평균 가격선·라벨 영역 */
+    avgBuy: {
+      left: "calc(100% - 79px)",
+      top: "36px",
+      width: "80px",
+      height: "24px",
+    },
+    /** 하단 거래량 패널 (~20%) */
+    volume: { left: "0px", top: "216px", width: "100%", height: "60px" },
+    /** 최고·최저 라벨이 붙는 상단 구간 */
+    highLow: { left: "52px", top: "-12px", width: "114px", height: "22px" },
+    /** 크로스헤어 툴팁 예상 위치 */
+    tooltip: { left: "42%", top: "96px", width: "140px", height: "48px" },
+    /** 메인 차트 전체 */
+    miniChart: {
+      left: "495px",
+      top: "-101px",
+      width: "24%",
+      height: `100px`,
+    },
+  };
+
+  const [layerShow, setLayerShow] = useState(false);
+  const [layerPosition, setLayerPosition] = useState<SampleLayerRect>(
+    SAMPLE_LAYER_RECTS.unit,
+  );
+
+  // TODO: 샘플시연후 제거
+  const handleSampleLayer = (layer: SampleLayerKey) => () => {
+    setLayerShow(true);
+    setLayerPosition(SAMPLE_LAYER_RECTS[layer]);
+  };
+
   return (
     <div className="relative w-full">
       <div className="relative w-full ">
         <div ref={chartAreaRef} className="relative w-full touch-none ">
+          <div
+            className={`sample-layer-rainbow pointer-events-none absolute z-[10000] ${layerShow ? "block" : "hidden"}`}
+            style={{
+              left: layerPosition.left,
+              top: layerPosition.top,
+              width: layerPosition.width,
+              height: layerPosition.height,
+            }}
+          />
           <div ref={containerRef} className="w-full" />
           {/* [옵션 1] 최고·최저 — timeToCoordinate / priceToCoordinate 앵커 */}
           {periodHighLow && showHighLow && highLowPositions ? (
@@ -753,6 +817,65 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
           >
             최고·최저
           </Button> */}
+        </div>
+
+        <div className="mt-10">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSampleLayer("unit")}
+          >
+            단위
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSampleLayer("chartType")}
+          >
+            차트타입
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSampleLayer("avgBuy")}
+          >
+            매수평균
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSampleLayer("volume")}
+          >
+            볼륨
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSampleLayer("highLow")}
+          >
+            최고/최저
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSampleLayer("tooltip")}
+          >
+            툴팁
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleSampleLayer("miniChart")}
+          >
+            미니차트
+          </Button>
         </div>
       </div>
     </div>
