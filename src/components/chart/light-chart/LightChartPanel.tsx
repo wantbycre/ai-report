@@ -34,6 +34,14 @@ import {
 } from "lightweight-charts";
 import { Button } from "@/components/ui/button";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   CHART_COLORS,
   CHART_HEIGHT,
   CHART_TYPES,
@@ -43,6 +51,7 @@ import {
   VOLUME_PANE_SCALE,
 } from "./lightChartConfig";
 import { getLightChartMock } from "./getLightChartMock";
+import { ChartTypeIcon } from "./ChartTypeIcons";
 import type {
   ChartRange,
   ChartType,
@@ -61,6 +70,28 @@ const TOOLTIP_WIDTH = 132;
 const TOOLTIP_OFFSET_X = 12;
 const TOOLTIP_OFFSET_Y = 36;
 
+/** 거래정보 샘플 테이블 데이터 */
+const SAMPLE_TRADE_ROWS = [
+  {
+    datetime: "2026-06-10 14:30",
+    type: "매수",
+    price: "220,000",
+    quantity: "1g",
+  },
+  {
+    datetime: "2026-06-09 11:15",
+    type: "매도",
+    price: "218,500",
+    quantity: "0.5g",
+  },
+  {
+    datetime: "2026-06-08 09:42",
+    type: "매수",
+    price: "217,800",
+    quantity: "2g",
+  },
+] as const;
+
 function formatKstHm(ts: number): string {
   const dt = new Date((ts + KST_OFFSET_SEC) * 1000);
   const hh = String(dt.getUTCHours()).padStart(2, "0");
@@ -75,6 +106,25 @@ function formatKstMonthDay(ts: number): string {
   return `${mm}/${dd}`;
 }
 
+function formatKstDate(ts: number): string {
+  const dt = new Date((ts + KST_OFFSET_SEC) * 1000);
+  const yyyy = dt.getUTCFullYear();
+  const mm = String(dt.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function formatKstDateTime(ts: number): string {
+  return `${formatKstDate(ts)} ${formatKstHm(ts)}`;
+}
+
+function businessDayToDateString(
+  time: string | { year: number; month: number; day: number },
+): string {
+  if (typeof time === "string") return time;
+  return `${time.year}-${String(time.month).padStart(2, "0")}-${String(time.day).padStart(2, "0")}`;
+}
+
 /** [옵션 4] 크로스헤어 툴팁에 표시할 가격 문자열 포맷 */
 function formatPrice(n: number): string {
   return n.toLocaleString("ko-KR", {
@@ -86,8 +136,26 @@ function formatPrice(n: number): string {
 /** [옵션 4] 커스텀 툴팁 위치·가격 상태 */
 interface CrosshairTooltip {
   price: number;
+  timeLabel: string;
   x: number;
   y: number;
+}
+
+/** [옵션 4] 기간별 크로스헤어 시각 포맷 (KST) */
+function formatCrosshairTime(time: Time, range: ChartRange): string {
+  if (typeof time === "number") {
+    switch (range) {
+      case "1d":
+        return formatKstHm(time);
+      case "1w":
+        return formatKstDateTime(time);
+      case "3m":
+      case "1y":
+      case "all":
+        return formatKstDate(time);
+    }
+  }
+  return businessDayToDateString(time);
 }
 
 /** [옵션 4] 크로스헤어가 가리키는 시리즈에서 라인 value 또는 캔들 close 추출 */
@@ -105,6 +173,7 @@ function updateCrosshairFromTouch(
   series: ISeriesApi<any>,
   clientX: number,
   clientY: number,
+  range: ChartRange,
   onUpdate: (tooltip: CrosshairTooltip) => void,
 ): void {
   const chartEl = chart.chartElement();
@@ -119,7 +188,12 @@ function updateCrosshairFromTouch(
   if (price === null) return;
 
   chart.setCrosshairPosition(price, time, series);
-  onUpdate({ price: Number(price), x, y });
+  onUpdate({
+    price: Number(price),
+    timeLabel: formatCrosshairTime(time, range),
+    x,
+    y,
+  });
 }
 
 const toLineData = (bars: OhlcvBar[]): LineData[] =>
@@ -288,8 +362,8 @@ function createLightChart(el: HTMLDivElement): IChartApi {
       vertLine: { visible: true, labelVisible: false },
     },
     grid: {
-      vertLines: { color: "rgba(0,0,0,0.06)", style: LineStyle.Solid },
-      horzLines: { color: "rgba(0,0,0,0.06)", style: LineStyle.Solid },
+      vertLines: { visible: false },
+      horzLines: { visible: false },
     },
     handleScroll: {
       mouseWheel: false,
@@ -341,6 +415,8 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
   const showVolumeRef = useRef(true);
   /** [옵션 1] applyRangeData에서 최신 showHighLow 참조 */
   const showHighLowRef = useRef(true);
+  /** [옵션 4] 크로스헤어 툴팁 시간 포맷용 최신 range */
+  const rangeRef = useRef<ChartRange>("1d");
 
   const [range, setRange] = useState<ChartRange>("1d");
   const [chartType, setChartType] = useState<ChartType>("line");
@@ -371,7 +447,8 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
   useEffect(() => {
     showVolumeRef.current = showVolume;
     showHighLowRef.current = showHighLow;
-  }, [showVolume, showHighLow]);
+    rangeRef.current = range;
+  }, [showVolume, showHighLow, range]);
 
   useEffect(() => {
     periodHighLowRef.current = periodHighLow;
@@ -500,6 +577,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       }
       setCrosshairTooltip({
         price,
+        timeLabel: formatCrosshairTime(param.time, rangeRef.current),
         x: param.point.x,
         y: param.point.y,
       });
@@ -520,6 +598,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
         mainSeries,
         clientX,
         clientY,
+        rangeRef.current,
         setCrosshairTooltip,
       );
     };
@@ -667,27 +746,27 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
 
   const SAMPLE_LAYER_RECTS: Record<SampleLayerKey, SampleLayerRect> = {
     /** 기간(1일·1주…) 버튼 행 */
-    unit: { left: "0px", top: "316px", width: "230px", height: "37px" },
+    unit: { left: "0", top: "-16%", width: "210px", height: "37px" },
     /** 라인/캔들 차트타입 버튼 행 */
-    chartType: { left: "560px", top: "316px", width: "103px", height: "37px" },
+    chartType: { left: "89%", top: "-16%", width: "75px", height: "37px" },
     /** 매수평균 가격선·라벨 영역 */
     avgBuy: {
       left: "calc(100% - 79px)",
-      top: "36px",
+      top: "11%",
       width: "80px",
       height: "24px",
     },
     /** 하단 거래량 패널 (~20%) */
-    volume: { left: "0px", top: "216px", width: "100%", height: "60px" },
+    volume: { left: "0px", top: "77%", width: "100%", height: "60px" },
     /** 최고·최저 라벨이 붙는 상단 구간 */
-    highLow: { left: "52px", top: "-12px", width: "114px", height: "22px" },
+    highLow: { left: "5%", top: "-12px", width: "114px", height: "22px" },
     /** 크로스헤어 툴팁 예상 위치 */
-    tooltip: { left: "42%", top: "96px", width: "140px", height: "48px" },
+    tooltip: { left: "42%", top: "40%", width: "140px", height: "48px" },
     /** 메인 차트 전체 */
     miniChart: {
-      left: "495px",
-      top: "-101px",
-      width: "24%",
+      left: "69%",
+      top: "-40%",
+      width: "30%",
       height: `100px`,
     },
   };
@@ -704,77 +783,110 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
   };
 
   return (
-    <div className="relative w-full">
-      <div className="relative w-full ">
-        <div ref={chartAreaRef} className="relative w-full touch-none ">
-          <div
-            className={`sample-layer-rainbow pointer-events-none absolute z-[10000] ${layerShow ? "block" : "hidden"}`}
-            style={{
-              left: layerPosition.left,
-              top: layerPosition.top,
-              width: layerPosition.width,
-              height: layerPosition.height,
-            }}
-          />
-          <div ref={containerRef} className="w-full" />
-          {/* [옵션 1] 최고·최저 — timeToCoordinate / priceToCoordinate 앵커 */}
-          {periodHighLow && showHighLow && highLowPositions ? (
-            <>
-              <div
-                className="pointer-events-none absolute z-20 whitespace-nowrap text-[10px] font-semibold tracking-tight text-red-500/90"
-                style={{
-                  left: highLowPositions.high.left,
-                  top: highLowPositions.high.top,
-                  transform: `translate(${highLowPositions.high.translateX}, calc(-100% - 6px))`,
-                }}
+    <div>
+      <div className="relative w-full mt-[-15px] px-2 bg-white">
+        <div className="flex flex-wrap items-center justify-between mb-8">
+          <div className="flex flex-wrap items-center gap-1">
+            {RANGES.map(({ key, label }) => (
+              <Button
+                key={key}
+                type="button"
+                variant={range === key ? "default" : "outline"}
+                size="xs"
+                onClick={() => setRange(key)}
               >
-                최고 {periodHighLow.high}({periodHighLow.highDate})
-              </div>
-              <div
-                className="pointer-events-none absolute z-20 whitespace-nowrap text-[10px] font-semibold tracking-tight text-blue-500/90"
-                style={{
-                  left: highLowPositions.low.left,
-                  top: highLowPositions.low.top,
-                  transform: `translate(${highLowPositions.low.translateX}, 6px)`,
-                }}
+                {label}
+              </Button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1">
+            {CHART_TYPES.map(({ key, label }) => (
+              <Button
+                key={key}
+                type="button"
+                variant={chartType === key ? "secondary" : "outline"}
+                size="icon-xs"
+                aria-label={label}
+                onClick={() => setChartType(key)}
               >
-                최저 {periodHighLow.low}({periodHighLow.lowDate})
-              </div>
-            </>
-          ) : null}
-          {/* [옵션 2] 매수평균 — 우측 가격축 숨김 시 createPriceLine title 대신 HTML 라벨 */}
-          {avgBuyLabelTop !== null ? (
-            <div
-              className="pointer-events-none absolute right-1 z-20 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
-              style={{
-                top: avgBuyLabelTop,
-                transform: "translateY(-50%)",
-                backgroundColor: CHART_COLORS.avgBuyLine,
-              }}
-            >
-              매수평균
-            </div>
-          ) : null}
-          {/* [옵션 4] hover/터치 시 현재가 툴팁 */}
-          {crosshairTooltip ? (
-            <div
-              className="pointer-events-none absolute z-30 rounded-md border border-border bg-background/95 px-2 py-1 text-xs font-semibold text-foreground shadow-md"
-              style={{
-                left: Math.min(
-                  crosshairTooltip.x + TOOLTIP_OFFSET_X,
-                  (chartAreaRef.current?.clientWidth ?? 300) - TOOLTIP_WIDTH,
-                ),
-                top: Math.max(8, crosshairTooltip.y - TOOLTIP_OFFSET_Y),
-              }}
-            >
-              {formatPrice(crosshairTooltip.price)} KRW
-            </div>
-          ) : null}
+                <ChartTypeIcon type={key} />
+              </Button>
+            ))}
+          </div>
         </div>
-      </div>
+        <div className="relative w-full ">
+          <div ref={chartAreaRef} className="relative w-full touch-none ">
+            <div
+              className={`sample-layer-rainbow pointer-events-none absolute z-[10000] ${layerShow ? "block" : "hidden"}`}
+              style={{
+                left: layerPosition.left,
+                top: layerPosition.top,
+                width: layerPosition.width,
+                height: layerPosition.height,
+              }}
+            />
+            <div ref={containerRef} className="w-full" />
+            {/* [옵션 1] 최고·최저 — timeToCoordinate / priceToCoordinate 앵커 */}
+            {periodHighLow && showHighLow && highLowPositions ? (
+              <>
+                <div
+                  className="pointer-events-none absolute z-20 whitespace-nowrap text-[10px] font-semibold tracking-tight text-red-500/90"
+                  style={{
+                    left: highLowPositions.high.left,
+                    top: highLowPositions.high.top,
+                    transform: `translate(${highLowPositions.high.translateX}, calc(-100% - 6px))`,
+                  }}
+                >
+                  최고 {periodHighLow.high}({periodHighLow.highDate})
+                </div>
+                <div
+                  className="pointer-events-none absolute z-20 whitespace-nowrap text-[10px] font-semibold tracking-tight text-blue-500/90"
+                  style={{
+                    left: highLowPositions.low.left,
+                    top: highLowPositions.low.top,
+                    transform: `translate(${highLowPositions.low.translateX}, 6px)`,
+                  }}
+                >
+                  최저 {periodHighLow.low}({periodHighLow.lowDate})
+                </div>
+              </>
+            ) : null}
+            {/* [옵션 2] 매수평균 — 우측 가격축 숨김 시 createPriceLine title 대신 HTML 라벨 */}
+            {avgBuyLabelTop !== null ? (
+              <div
+                className="pointer-events-none absolute right-1 z-20 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+                style={{
+                  top: avgBuyLabelTop,
+                  transform: "translateY(-50%)",
+                  backgroundColor: CHART_COLORS.avgBuyLine,
+                }}
+              >
+                매수평균
+              </div>
+            ) : null}
+            {/* [옵션 4] hover/터치 시 현재가 툴팁 */}
+            {crosshairTooltip ? (
+              <div
+                className="pointer-events-none absolute z-30 flex flex-col gap-0.5 rounded-md border border-border bg-background/95 px-2 py-1 text-xs font-semibold text-foreground shadow-md"
+                style={{
+                  left: Math.min(
+                    crosshairTooltip.x + TOOLTIP_OFFSET_X,
+                    (chartAreaRef.current?.clientWidth ?? 300) - TOOLTIP_WIDTH,
+                  ),
+                  top: Math.max(8, crosshairTooltip.y - TOOLTIP_OFFSET_Y),
+                }}
+              >
+                <span className="text-muted-foreground text-center">
+                  {crosshairTooltip.timeLabel}
+                </span>
+                <span>{formatPrice(crosshairTooltip.price)} KRW</span>
+              </div>
+            ) : null}
+          </div>
+        </div>
 
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 mt-5">
-        <div className="flex flex-wrap items-center gap-1">
+        <div className="mb-3 flex flex-wrap items-center justify-end pb-4">
+          {/* <div className="flex flex-wrap items-center gap-1">
           {RANGES.map(({ key, label }) => (
             <Button
               key={key}
@@ -799,84 +911,115 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
               {label}
             </Button>
           ))}
-          {/* [옵션 3] 거래량 막대 ON/OFF */}
-          {/* <Button
-            type="button"
-            variant={showVolume ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowVolume((v) => !v)}
-          >
-            거래량
-          </Button> */}
-          {/* [옵션 1] 최고·최저 금액 오버레이 ON/OFF */}
-          {/* <Button
-            type="button"
-            variant={showHighLow ? "default" : "outline"}
-            size="sm"
-            onClick={() => setShowHighLow((v) => !v)}
-          >
-            최고·최저
-          </Button> */}
-        </div>
+        </div> */}
 
-        <div className="mt-10">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSampleLayer("unit")}
-          >
-            단위
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSampleLayer("chartType")}
-          >
-            차트타입
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSampleLayer("avgBuy")}
-          >
-            매수평균
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSampleLayer("volume")}
-          >
-            볼륨
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSampleLayer("highLow")}
-          >
-            최고/최저
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSampleLayer("tooltip")}
-          >
-            툴팁
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleSampleLayer("miniChart")}
-          >
-            미니차트
-          </Button>
+          <div className="mt-5 flex gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSampleLayer("unit")}
+            >
+              단위
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSampleLayer("chartType")}
+            >
+              차트타입
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSampleLayer("avgBuy")}
+            >
+              매수평균
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSampleLayer("volume")}
+            >
+              볼륨
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSampleLayer("highLow")}
+            >
+              최고/최저
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSampleLayer("tooltip")}
+            >
+              툴팁
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSampleLayer("miniChart")}
+            >
+              미니차트
+            </Button>
+          </div>
         </div>
+      </div>
+
+      <div className="bg-white p-4">
+        <h3 className="mb-3 text-sm font-semibold">거래정보</h3>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>거래일시</TableHead>
+              <TableHead>구분</TableHead>
+              <TableHead className="text-right">체결가</TableHead>
+              <TableHead className="text-right">수량</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {SAMPLE_TRADE_ROWS.map((row) => (
+              <TableRow key={row.datetime}>
+                <TableCell className="text-muted-foreground">
+                  {row.datetime}
+                </TableCell>
+                <TableCell
+                  className="font-medium"
+                  style={{
+                    color:
+                      row.type === "매수"
+                        ? CHART_COLORS.candleUp
+                        : CHART_COLORS.candleDown,
+                  }}
+                >
+                  {row.type}
+                </TableCell>
+                <TableCell
+                  className="text-right font-medium"
+                  style={{
+                    color:
+                      row.type === "매수"
+                        ? CHART_COLORS.candleUp
+                        : CHART_COLORS.candleDown,
+                  }}
+                >
+                  {row.price}
+                </TableCell>
+                <TableCell className="text-right">{row.quantity}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+
+        <small>* 비단의 경우 매수평균대신 전일종가 표기 </small>
       </div>
     </div>
   );

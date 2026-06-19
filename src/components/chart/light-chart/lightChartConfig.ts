@@ -33,16 +33,16 @@ export function makeAvgBuyAutoscaleProvider(
   };
 }
 
-export const CHART_HEIGHT = 300;
+export const CHART_HEIGHT = 400;
 
 export const CHART_COLORS = {
   line: "#dd3c44",
   candleUp: "#dd3c44",
   candleDown: "#1375ec",
-  /** [옵션 2] 평균매수 price line 색상 */
-  avgBuyLine: "#2563eb",
+  /** [옵션 2] 평균매수 price line — 양봉(빨강)·음봉(파랑)과 구분되는 바이올렛 */
+  avgBuyLine: "#7b61c9",
   /** [옵션 3] 하단 거래량 Histogram 막대 색상(회색 통일) */
-  volumeBar: "rgba(160,160,160,0.55)",
+  volumeBar: "rgba(226, 226, 226, 0.55)",
 } as const;
 
 /**
