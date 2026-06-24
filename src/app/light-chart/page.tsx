@@ -7,7 +7,7 @@ export default function LightChartSamplePage() {
   return (
     <main className="">
       <AppNav />
-      <section className="mt-4">
+      <section className="">
         <ChartDemoClient />
       </section>
 

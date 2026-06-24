@@ -783,7 +783,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
   };
 
   return (
-    <div>
+    <div className="pt-2">
       <div className="relative w-full mt-[-15px] px-2 bg-white">
         <div className="flex flex-wrap items-center justify-between mb-8">
           <div className="flex flex-wrap items-center gap-1">

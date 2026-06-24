@@ -1,0 +1,277 @@
+---
+description: 금거래소 light-chart 파일럿 → React 17 운영 프로젝트 이식 규칙 (비 Next.js)
+globs: "**/light-chart/**,**/LightChartPanel*,**/Sparkline*,**/ChartTypeIcons*"
+alwaysApply: false
+---
+
+# Light Chart 이식 규칙 (React 17 · 비 Next.js)
+
+## 0. 전제
+
+| 항목 | 파일럿 (ai-report) | 운영 프로젝트 |
+|------|-------------------|--------------|
+| 프레임워크 | Next.js 16 App Router | **Next.js 사용 안 함** (CRA / Vite / Webpack 등) |
+| React | 19 | **React 17** |
+| 차트 | lightweight-charts v5 | **동일 라이브러리·동일 옵션 유지** |
+| 데이터 | `getLightChartMock()` | **REST API GET** (단수 엔드포인트) |
+
+**기준 구현**: `src/components/chart/light-chart/LightChartPanel.tsx`  
+이 파일의 차트 로직·옵션·오버레이 패턴을 **그대로** 이식한다. mock만 API 어댑터로 교체한다.
+
+---
+
+## 1. 이식 시 복사 / 제외
+
+### 복사 (필수)
+
+```
+light-chart/
+  LightChartPanel.tsx      # 메인 패널 — mock 호출부만 API로 교체
+  lightChartConfig.ts      # CHART_COLORS, RANGES, CHART_TYPES, VOLUME_PANE_SCALE
+  lightChartTypes.ts       # ChartRange, OhlcvBar, PeriodHighLow, TickerInfo
+  ChartTypeIcons.tsx       # 라인/캔들 아이콘 버튼
+sparkline/
+  Sparkline.tsx            # [옵션7] 미니차트
+```
+
+### 복사 후 추출 (mockCore에서 유틸만)
+
+`mockCore.ts` 전체는 복사하지 않는다. 아래만 `lightChartUtils.ts` 등으로 분리:
+
+- `buildPeriodStats(bars)` — API가 periodStats를 안 주면 클라이언트 집계
+- `formatBarDate(time)` — 최고/최저 라벨 날짜 `YY/MM/DD`
+
+### 제외 (mock 전용)
+
+```
+getLightChartMock.ts, mock1d.ts, mock1w.ts, mock3m.ts, mock1y.ts, mockAll.ts, mockDaily.ts, prng.ts
+```
+
+### Next.js 전용 — 운영에서 제거·대체
+
+| 파일럿 | 운영 대체 |
+|--------|----------|
+| `"use client"` | **삭제** (불필요) |
+| `next/dynamic` (`ChartDemoClient.tsx`) | `React.lazy` + `Suspense` 또는 정적 import |
+| `next/link` (`AppNav`) | `react-router-dom` `Link` 또는 `<a>` |
+| `@/` path alias | 운영 프로젝트 alias에 맞게 import 경로 수정 |
+
+---
+
+## 2. React 17 제약
+
+- 함수 컴포넌트 + Hooks (`useState`, `useEffect`, `useRef`) — 파일럿과 동일
+- JSX transform이 **classic**이면 `import React from 'react'` 유지
+- `React.FC` 사용 금지
+- 차트 DOM은 `useEffect` 안에서 `createChart` — **useEffect + fetch로 데이터 로드 금지** (운영 프로젝트 React Query 규칙 따름)
+- 코드 스플리팅 필요 시:
+
+```tsx
+const LightChartPanel = React.lazy(() => import('./light-chart/LightChartPanel'));
+
+<Suspense fallback={<Spinner />}>
+  <LightChartPanel onTick={handleTick} />
+</Suspense>
+```
+
+---
+
+## 3. 데이터 로딩 패턴 (운영)
+
+파일럿의 `applyRangeData` 내부:
+
+```ts
+const { bars, periodStats, ticker } = getLightChartMock(key); // ← 이 한 줄만 교체
+```
+
+운영에서는 **React Query `useQuery`** + **어댑터 함수**로 교체:
+
+```ts
+// api/getGoldChart.ts
+export const getGoldChart = (range: ChartRange) =>
+  api.get<ApiResponse<GoldChartApiDto>>('/api/gold/chart', { params: { range } });
+
+// adapters/toLightChartData.ts
+export function toLightChartData(dto: GoldChartApiDto): LightChartDataResult { ... }
+
+// hooks/useGoldChart.ts
+export const useGoldChart = (range: ChartRange) =>
+  useQuery({
+    queryKey: ['goldChart', { range }],
+    queryFn: () => getGoldChart(range),
+    select: (res) => toLightChartData(res.data.data),
+  });
+```
+
+`LightChartPanel`에서 `isLoading` → `<Spinner />`, `isError` → 에러 UI.
+
+**queryKey**: `['goldChart', { range }]` — range 변경 시 자동 refetch.
+
+---
+
+## 4. 내부 데이터 계약 (`LightChartDataResult`)
+
+mock `LightChartMockResult`와 동일 shape 유지:
+
+```ts
+interface LightChartDataResult {
+  bars: OhlcvBar[];
+  periodStats: PeriodHighLow;  // API 제공 또는 buildPeriodStats(bars)
+  ticker: TickerInfo;          // 헤더 현재가/등락
+  avgBuyPrice: number;         // [옵션3] SAMPLE_AVG_BUY_PRICE 대체
+}
+```
+
+`avgBuyPrice`는 `lightChartConfig.SAMPLE_AVG_BUY_PRICE` 대신 API 값을 `attachAvgBuyPriceLine` / `computeAvgBuyLabelTop` / `makeAvgBuyAutoscaleProvider`에 전달.
+
+---
+
+## 5. 차트 옵션 명세 (7개)
+
+파일럿 주석 번호와 다름 — **아래 번호가 운영 기준**.
+
+### [옵션1] 기간 선택 — 1일 / 1주 / 3개월 / 1년 / 전체
+
+- **상태**: `range: ChartRange` (`"1d"|"1w"|"3m"|"1y"|"all"`)
+- **UI**: `RANGES` 버튼 (`lightChartConfig.ts`)
+- **동작**: range 변경 → API refetch → `applyRangeData`
+- **timeScale**: `1d`/`1w` → `timeVisible: true` (intraday), 그 외 `false`
+- **KST**: `KST_OFFSET_SEC = 9*60*60`, `tickMarkFormatter`에서 시:분 / MM/DD 표기
+
+### [옵션2] 차트 타입 — 라인 / 캔들
+
+- **상태**: `chartType: "line" | "candle"`
+- **UI**: `ChartTypeIcon` + `CHART_TYPES` 버튼 (`size="icon-xs"`, `aria-label` 유지)
+- **라인**: `LineSeries` + `toLineData(bars)` → `{ time, value: close }`
+- **캔들**: `CandlestickSeries` + `toCandles(bars)` → OHLC
+- **색상**: `CHART_COLORS.line`, `candleUp`(빨강 `#dd3c44`), `candleDown`(파랑 `#1375ec`)
+- **API 수정 포인트**: API가 라인 전용(close만) / OHLC 분리 응답이면 **어댑터에서 `OhlcvBar`로 통일** 후 기존 `toLineData`/`toCandles` 유지
+
+### [옵션3] 매수평균 라인
+
+- **구현**: `createPriceLine` + HTML 라벨 오버레이
+- **색상**: `CHART_COLORS.avgBuyLine` (`#7b61c9` 바이올렛)
+- **스타일**: `LineStyle.Dotted`, `lineWidth: 2`, `axisLabelVisible: false`
+- **라벨**: 우측 `매수평균` HTML (`avgBuyLabelTop` = `priceToCoordinate`)
+- **autoscale**: `makeAvgBuyAutoscaleProvider(avgBuyPrice)` — 가격선이 pane 밖으로 밀리지 않게
+- **attach 타이밍**: `requestAnimationFrame` 후 attach (레이아웃 확정 후)
+
+### [옵션4] 거래량 볼륨
+
+- **시리즈**: `HistogramSeries`, `priceScaleId: ""` (하단 오버레이)
+- **레이아웃**: `VOLUME_PANE_SCALE` + `applyVolumePaneLayout`
+- **데이터**: `bars[].volume` → `toVolumeData` (막대 색 `CHART_COLORS.volumeBar`)
+- **토글**: `showVolume` — OFF 시 `volumeSeries.setData([])` + `mainOnly` margin
+- **제한**: 막대 width 개별 설정 불가 (lightweight-charts 한계). 색상·표시 여부만 제어
+
+### [옵션5] 최고 / 최저
+
+- **데이터**: `PeriodHighLow` (가격 문자열 + `highTime`/`lowTime` + `highPrice`/`lowPrice`)
+- **UI**: HTML 오버레이 (`computeHighLowLabelPositions`, 좌우 끝 `translateX` 보정)
+- **토글**: `showHighLow`
+- **집계**: API가 주면 사용, 없으면 `buildPeriodStats(bars)` 클라이언트 계산
+
+### [옵션6] 크로스헤어 툴팁
+
+- **데스크톱**: `subscribeCrosshairMove`
+- **모바일**: `touchstart`/`touchmove`/`touchend` + `setCrosshairPosition`
+- **표시**: 가격 `formatPrice` + KRW, 시간 `formatCrosshairTime(time, range)`
+- **시간 포맷 (KST)**:
+  - `1d` → `HH:mm`
+  - `1w` → `YYYY-MM-DD HH:mm`
+  - `3m` / `1y` / `all` → `YYYY-MM-DD`
+- **축 라벨**: `crosshair.horzLine/vertLine.labelVisible: false` (커스텀 HTML만 사용)
+
+### [옵션7] 미니차트 (Sparkline)
+
+- **파일**: `Sparkline.tsx` — 목록/헤더 우측 작은 영역
+- **시리즈**: `AreaSeries`, 축·그리드·크로스헤어 전부 숨김
+- **데이터**: **1d** 구간 close (API: `range=1d` 또는 전용 미니차트 GET)
+- **터치**: `pointer-events-none` — 부모 Link 클릭 통과
+- **크기**: 부모 `h-[70px] w-[180px]` 등 고정 영역 + resize `fitContent`
+
+---
+
+## 6. 추가 이식 항목 (파일럿에 있음 · 옵션 목록 외)
+
+| 항목 | 위치 | 비고 |
+|------|------|------|
+| 헤더 현재가 연동 | `onTick?: (ticker: TickerInfo) => void` | range와 무관 1d 기준 등락 — API 스펙 확인 |
+| 거래정보 테이블 | `LightChartPanel` 하단 | 별도 GET `/api/gold/trades` 권장. 매수=빨강·매도=파랑 |
+| Y축 숨김 | `rightPriceScale: { visible: false }` | 가격은 툴팁·오버레이로 표시 |
+| 스크롤/줌 비활성 | `handleScroll`/`handleScale` false | 금거래소 UX |
+| resize | `window.resize` → `chart.applyOptions({ width })` + 라벨 좌표 재동기화 |
+| 차트 높이 | `CHART_HEIGHT = 400` | `lightChartConfig.ts` |
+
+---
+
+## 7. API → `OhlcvBar` 매핑 (실 API에 맞게 어댑터만 수정)
+
+```ts
+interface OhlcvBar {
+  time: Time;       // ⚠️ 가장 중요 — lightweight-charts Time 타입
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+```
+
+### time 필드 규칙
+
+| range | 권장 time 타입 | 예시 |
+|-------|---------------|------|
+| `1d`, `1w` | `UTCTimestamp` (number, **초** 단위) | `1704067200` |
+| `3m`, `1y`, `all` | business day string | `"2026-06-10"` |
+
+- API가 **밀리초**면 `Math.floor(ms / 1000)` 변환
+- API가 `YYYY-MM-DD HH:mm:ss` 문자열이면 KST 기준 epoch 초로 변환 (파일럿 `mock1d` 참고)
+- **정렬**: time 오름차순 필수
+- **중복 time** 금지
+
+### 라인/캔들 분기 (어댑터 책임)
+
+```ts
+// API가 close만 줄 때 — 캔들용 OHLC 생성 여부는 API 스펙 따름
+// open/high/low 없으면 close로 채우지 말고 API 담당자와 협의
+
+// ✅ 어댑터 출력은 항상 OhlcvBar[] 통일
+// ✅ 차트 쪽 toLineData / toCandles 는 수정 최소화
+```
+
+---
+
+## 8. 금지 패턴 (운영)
+
+- ❌ `useEffect` + `fetch` / `axios` 직접 호출 in `LightChartPanel`
+- ❌ mock 파일을 운영에 포함
+- ❌ Next.js 전용 API (`"use client"`, `next/image`, App Router)
+- ❌ lightweight-charts 내장 그리드로 개별 눈금 패턴 제어 (미지원)
+- ❌ `SAMPLE_AVG_BUY_PRICE` 하드코딩 유지 — API `avgBuyPrice`로 교체
+- ❌ `chartAreaRef.current`를 render 중 읽기 (파일럿 잔여 — 운영 이식 시 `chartAreaWidth` state로 수정 권장)
+
+---
+
+## 9. Cursor 작업 순서 (운영 프로젝트에서)
+
+1. `@.cursor/rules/light-chart-migration.mdc` + `@.cursor/rules/light-chart-api.mdc` 주입
+2. 파일럿 `LightChartPanel.tsx` / `lightChartTypes.ts` / `lightChartConfig.ts` 참조 복사
+3. `getLightChartMock` → `useGoldChart` + `toLightChartData` 어댑터 작성 (**API 스펙에 맞게 어댑터만 수정**)
+4. `SAMPLE_AVG_BUY_PRICE` → API `avgBuyPrice` 연동
+5. `Sparkline` — 1d API 연동
+6. 거래정보 테이블 — 별도 trades API
+7. import 경로·UI 컴포넌트(Button/Table)를 운영 디자인 시스템에 맞게 교체
+8. 실기기 터치 툴팁·resize 검증
+
+---
+
+## 10. 참조 파일 (파일럿)
+
+| 용도 | 경로 |
+|------|------|
+| 메인 패널 | `src/components/chart/light-chart/LightChartPanel.tsx` |
+| 상수·색상 | `src/components/chart/light-chart/lightChartConfig.ts` |
+| 타입 | `src/components/chart/light-chart/lightChartTypes.ts` |
+| 미니차트 | `src/components/chart/sparkline/Sparkline.tsx` |
+| periodStats 유틸 | `src/components/chart/light-chart/mockCore.ts` (`buildPeriodStats`, `formatBarDate`) |

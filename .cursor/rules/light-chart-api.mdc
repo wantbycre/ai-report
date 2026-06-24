@@ -1,0 +1,219 @@
+---
+description: 금거래소 light-chart REST API GET 어댑터·엔드포인트·응답 매핑 규칙
+globs: "**/light-chart/**,*Chart*api*,*gold*chart*,**/api/**/*chart*"
+alwaysApply: false
+---
+
+# Light Chart API 어댑터 규칙
+
+운영 프로젝트는 **단수 REST GET**으로 차트 데이터를 받는다.  
+차트 렌더 로직(`LightChartPanel`)은 건드리지 않고 **어댑터 + Query 훅**만 API에 맞게 수정한다.
+
+---
+
+## 1. 권장 엔드포인트 (예시 — 실제 경로는 운영 API 스펙 따름)
+
+```
+GET /api/gold/chart?range=1d|1w|3m|1y|all
+GET /api/gold/chart/mini          # [옵션7] Sparkline 전용 (1d close 배열) — chart API에 포함되면 생략
+GET /api/gold/trades              # 거래정보 테이블 (페이지네이션은 추후)
+GET /api/gold/ticker              # 헤더 현재가 — chart 응답에 포함되면 생략
+```
+
+range별 **별도 URL**이면 `getGoldChart(range)` 내부에서 switch.
+
+---
+
+## 2. API 응답 DTO (예시)
+
+실제 필드명은 API 문서에 맞게 rename. 어댑터 입력 타입만 맞추면 됨.
+
+```ts
+/** API 원본 — 실제 스펙에 맞게 수정 */
+interface GoldChartBarDto {
+  timestamp: number;        // ms 또는 sec — 어댑터에서 sec 통일
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+interface GoldChartApiDto {
+  range: ChartRange;
+  bars: GoldChartBarDto[];
+  avgBuyPrice: number;
+  /** 선택 — 없으면 클라이언트 buildPeriodStats */
+  periodHigh?: { price: number; at: string | number };
+  periodLow?: { price: number; at: string | number };
+  ticker?: {
+    price: number;
+    changeAmount: number;
+    changePercent: number;
+  };
+}
+```
+
+---
+
+## 3. 어댑터 (`toLightChartData`)
+
+```ts
+import type { Time, UTCTimestamp } from 'lightweight-charts';
+import type { ChartRange, LightChartDataResult, OhlcvBar, PeriodHighLow } from '../lightChartTypes';
+import { buildPeriodStats, formatBarDate } from '../lightChartUtils';
+import { tickerFromBars } from '../lightChartTypes';
+
+function toChartTime(dto: GoldChartBarDto, range: ChartRange): Time {
+  const isIntraday = range === '1d' || range === '1w';
+  if (isIntraday) {
+    // ms면 /1000, sec면 그대로
+    const sec = dto.timestamp > 1e12 ? Math.floor(dto.timestamp / 1000) : dto.timestamp;
+    return sec as UTCTimestamp;
+  }
+  // 일봉: YYYY-MM-DD string 권장
+  if (typeof dto.timestamp === 'string') return dto.timestamp.slice(0, 10);
+  const d = new Date(dto.timestamp);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function toOhlcvBar(dto: GoldChartBarDto, range: ChartRange): OhlcvBar {
+  return {
+    time: toChartTime(dto, range),
+    open: dto.open,
+    high: dto.high,
+    low: dto.low,
+    close: dto.close,
+    volume: dto.volume,
+  };
+}
+
+function toPeriodStatsFromApi(
+  dto: GoldChartApiDto,
+  bars: OhlcvBar[],
+): PeriodHighLow {
+  if (dto.periodHigh && dto.periodLow) {
+    return {
+      high: Math.round(dto.periodHigh.price).toLocaleString('ko-KR'),
+      low: Math.round(dto.periodLow.price).toLocaleString('ko-KR'),
+      highDate: formatBarDate(toChartTime({ timestamp: dto.periodHigh.at } as GoldChartBarDto, dto.range)),
+      lowDate: formatBarDate(toChartTime({ timestamp: dto.periodLow.at } as GoldChartBarDto, dto.range)),
+      highTime: toChartTime({ timestamp: dto.periodHigh.at } as GoldChartBarDto, dto.range),
+      highPrice: dto.periodHigh.price,
+      lowTime: toChartTime({ timestamp: dto.periodLow.at } as GoldChartBarDto, dto.range),
+      lowPrice: dto.periodLow.price,
+    };
+  }
+  return buildPeriodStats(bars);
+}
+
+export function toLightChartData(dto: GoldChartApiDto): LightChartDataResult {
+  const bars = dto.bars
+    .map((b) => toOhlcvBar(b, dto.range))
+    .sort((a, b) => {
+      if (typeof a.time === 'number' && typeof b.time === 'number') return a.time - b.time;
+      return String(a.time).localeCompare(String(b.time));
+    });
+
+  return {
+    bars,
+    periodStats: toPeriodStatsFromApi(dto, bars),
+    ticker: dto.ticker ?? tickerFromBars(bars) ?? { price: 0, changeAmount: 0, changePercent: 0 },
+    avgBuyPrice: dto.avgBuyPrice,
+  };
+}
+```
+
+**실 API 스펙이 다르면 이 파일만 수정.** `LightChartPanel`의 `toLineData`/`toCandles`는 유지.
+
+---
+
+## 4. Query 훅
+
+```ts
+// useGoldChart.ts — 운영 프로젝트 React Query 규칙 따름
+export const goldChartQueryKey = (range: ChartRange) => ['goldChart', { range }] as const;
+
+export function useGoldChart(range: ChartRange) {
+  return useQuery({
+    queryKey: goldChartQueryKey(range),
+    queryFn: async () => {
+      const res = await getGoldChart(range);
+      return toLightChartData(res.data.data); // 운영 ApiResponse 래핑에 맞게 select 조정
+    },
+    staleTime: 30_000,
+  });
+}
+```
+
+`LightChartPanel` 변경:
+
+```ts
+// Before
+const { bars, periodStats, ticker } = getLightChartMock(key);
+
+// After — props 또는 훅
+const { data, isLoading, isError } = useGoldChart(range);
+// applyRangeData 호출 시 data.bars, data.periodStats, data.ticker, data.avgBuyPrice 사용
+```
+
+---
+
+## 5. 라인 / 캔들 API 차이 대응
+
+| API 응답 형태 | 어댑터 처리 |
+|--------------|------------|
+| OHLCV 통합 배열 | 그대로 `OhlcvBar[]` |
+| 라인 전용 `{ time, close }[]` | `open=high=low=close` **금지** — API에 OHLC 요청 또는 캔들 모드 비활성 |
+| 캔들만 제공 | 라인은 `value: close`로 `toLineData` (기존 로직) |
+| volume 별도 배열 | time 기준 join 후 `OhlcvBar.volume` 채움 |
+| avgBuyPrice 별도 GET | chart 응답에 merge 또는 `useGoldAvgBuy` 병렬 query |
+
+캔들 색상 규칙 (국내): `close >= open` → `candleUp`, 아니면 `candleDown` — **Histogram per-bar color**에도 동일 적용 가능.
+
+---
+
+## 6. 거래정보 테이블 API
+
+```ts
+interface TradeRowDto {
+  tradedAt: string;   // "2026-06-10 14:30"
+  side: 'BUY' | 'SELL';
+  price: number;
+  quantity: string;   // "1g"
+}
+
+// UI 매핑
+// BUY  → type: '매수', color: CHART_COLORS.candleUp
+// SELL → type: '매도', color: CHART_COLORS.candleDown
+```
+
+파일럿 `SAMPLE_TRADE_ROWS` 제거 → `useGoldTrades()` Query.
+
+---
+
+## 7. Sparkline API
+
+```ts
+// 방법 A: useGoldChart('1d') 재사용 — bars.map(b => ({ time: b.time, value: b.close }))
+// 방법 B: GET /api/gold/chart/mini → { points: { t, c }[] }
+```
+
+`Sparkline.tsx`의 `getLightChartMock('1d')` 한 줄을 Query/props로 교체.
+
+---
+
+## 8. 체크리스트 (API 연동 완료 기준)
+
+- [ ] range 5종 각각 차트 렌더·time 축 라벨 정상
+- [ ] 라인/캔들 전환 시 동일 API 데이터로 표시
+- [ ] 매수평균 dotted 라인 + 라벨이 API 가격에 맞음
+- [ ] 거래량 패널 ON/OFF
+- [ ] 최고/최저 오버레이 위치 (resize 후 재동기화)
+- [ ] 툴팁 시간 포맷 range별 (1d HH:mm, 1w YYYY-MM-DD HH:mm, …)
+- [ ] Sparkline 1d 데이터
+- [ ] 거래정보 테이블 GET
+- [ ] 로딩 Spinner / 에러 상태
