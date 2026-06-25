@@ -22,8 +22,10 @@ import {
   TickMarkType,
   TrackingModeExitMode,
   createChart,
+  createSeriesMarkers,
   type IChartApi,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
   type CandlestickData,
   type LineData,
   type HistogramData,
@@ -198,6 +200,23 @@ function updateCrosshairFromTouch(
 
 const toLineData = (bars: OhlcvBar[]): LineData[] =>
   bars.map((b) => ({ time: b.time, value: b.close }));
+
+/** 라인 차트 마지막 봉 끝점 마커(동그라미) */
+function attachLineLastPointMarker(
+  markersApi: ISeriesMarkersPluginApi<Time> | null,
+  lastBar: OhlcvBar,
+) {
+  if (!markersApi) return;
+  markersApi.setMarkers([
+    {
+      time: lastBar.time,
+      position: "inBar",
+      color: CHART_COLORS.line,
+      shape: "circle",
+      size: 1,
+    },
+  ]);
+}
 
 const toCandles = (bars: OhlcvBar[]): CandlestickData[] =>
   bars.map((b) => toCandlestick(b));
@@ -409,6 +428,8 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
   const volumeSeriesRef = useRef<ISeriesApi<"Histogram"> | null>(null);
   /** [옵션 2] 평균매수 가격선 인스턴스 */
   const avgPriceLineRef = useRef<IPriceLine | null>(null);
+  /** 라인 차트 마지막 봉 마커 플러그인 */
+  const lineMarkersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const onTickRef = useRef(onTick);
   const lastSeriesKindRef = useRef<ChartType | null>(null);
   /** [옵션 3] applyRangeData에서 최신 showVolume 참조 */
@@ -502,7 +523,9 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
 
     if (options.chartType === "line") {
       series.setData(toLineData(bars));
+      attachLineLastPointMarker(lineMarkersRef.current, last);
     } else {
+      lineMarkersRef.current?.setMarkers([]);
       series.setData(toCandles(bars));
     }
 
@@ -653,6 +676,8 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       seriesRef.current = null;
       volumeSeriesRef.current = null;
       avgPriceLineRef.current = null;
+      lineMarkersRef.current?.detach();
+      lineMarkersRef.current = null;
       setCrosshairTooltip(null);
       setHighLowPositions(null);
       setAvgBuyLabelTop(null);
@@ -670,6 +695,8 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
       if (seriesRef.current) {
         chart.removeSeries(seriesRef.current);
         seriesRef.current = null;
+        lineMarkersRef.current?.detach();
+        lineMarkersRef.current = null;
         // 제거된 시리즈에 붙어있던 평균매수 PriceLine 참조도 함께 무효화
         // (새 시리즈에 stale 핸들을 removePriceLine 하면 에러)
         avgPriceLineRef.current = null;
@@ -701,6 +728,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
           priceLineVisible: false,
           autoscaleInfoProvider: avgBuyAutoscale,
         });
+        lineMarkersRef.current = createSeriesMarkers(seriesRef.current, []);
       }
 
       /** [옵션 3] priceScaleId "" = 차트 하단 오버레이 거래량 패널 */
@@ -784,7 +812,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
 
   return (
     <div className="pt-2">
-      <div className="relative w-full mt-[-15px] px-2 bg-white">
+      <div className="relative w-full mt-[-15px] px-2 bg-white mb-2">
         <div className="flex flex-wrap items-center justify-between mb-8">
           <div className="flex flex-wrap items-center gap-1">
             {RANGES.map(({ key, label }) => (
@@ -885,7 +913,7 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
           </div>
         </div>
 
-        <div className="mb-3 flex flex-wrap items-center justify-end pb-4">
+        <div className="flex flex-wrap items-center justify-end pb-4">
           {/* <div className="flex flex-wrap items-center gap-1">
           {RANGES.map(({ key, label }) => (
             <Button
@@ -974,8 +1002,52 @@ export default function LightChartPanel({ onTick }: LightChartPanelProps) {
         </div>
       </div>
 
+      <div className="bg-white p-4 mb-2">
+        {/* 반짝이는 별(스파클) 아이콘 - AI 의미 */}
+        <span
+          title="AI 해설"
+          className="inline-flex items-center text-yellow-400 mr-2"
+          aria-label="AI 해설"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width={20}
+            height={20}
+            fill="none"
+            viewBox="0 0 20 20"
+            className="tw-text-yellow-400"
+          >
+            <g>
+              <path
+                d="M10 2.75l1.53 3.383a1 1 0 00.641.55l3.668 1.11c.413.124.413.722 0 .846l-3.668 1.11a1 1 0 00-.641.55L10 13.25l-1.53-3.383a1 1 0 00-.641-.55l-3.668-1.11c-.413-.124-.413-.722 0-.846l3.668-1.11a1 1 0 00.641-.55L10 2.75z"
+                fill="currentColor"
+                filter="url(#sparkle-shadow)"
+              />
+            </g>
+            <defs>
+              <filter id="sparkle-shadow" x="-2" y="-2" width="24" height="24">
+                <feDropShadow
+                  dx="0"
+                  dy="0"
+                  stdDeviation="1.5"
+                  floodColor="#facc15"
+                />
+              </filter>
+            </defs>
+          </svg>
+          <span className="ml-1 text-xs font-semibold text-yellow-600">
+            AI 추천
+          </span>
+        </span>
+
+        <p className="text-sm">
+          6월 24일 금시세(금값) 하락…순금 1g 20만원대 유지
+          <span className="text-xs text-muted-foreground">- 중앙일보</span>
+        </p>
+      </div>
+
       <div className="bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold">거래정보</h3>
+        {/* <h3 className="mb-3 text-sm font-semibold">거래정보</h3> */}
         <Table>
           <TableHeader>
             <TableRow>
